@@ -257,17 +257,30 @@ export function entityAliases(ref: NoteRef | Note): string[] {
   return a.map((x) => String(x).trim()).filter(Boolean)
 }
 
-// The terms that should match an entity in free text: its name, the FIRST word
-// of the name (covers bare mentions like "Rachel" for "Rachel Isaacson"), and
-// every alias. Deduped case-insensitively, empties dropped. Disambiguation falls
-// out of this per-entity: a bare "Rachel" only matches the Rachel who carries
-// "Rachel" as a name-first-word or alias — there's no special-casing. Used by
-// both Unlinked mentions (entity→captures) and Detected entities (capture→
-// entities) so the two directions stay symmetric.
+// Common words that double as first-names — too generic to first-word match
+// (an "I will go" capture shouldn't suggest "Will Thomas").
+const FIRST_WORD_STOP = new Set([
+  'will', 'grace', 'may', 'art', 'hope', 'joy', 'faith', 'sky', 'star', 'rose',
+  'the', 'new', 'good', 'one', 'love', 'light', 'open', 'first',
+])
+
+// The terms that should match an entity in free text: its name, every alias, and
+// — for PEOPLE only — the FIRST word of the name (covers bare mentions like
+// "Rachel" for "Rachel Isaacson"). First-word matching is restricted to people
+// because for other types the first word is usually a common word ("Write of
+// Passage", "Search Inside Yourself", "Spirit of the Front Range") and would just
+// be noise. Common-word first-names (Will, Grace…) are skipped too. Deduped
+// case-insensitively. Used by both Unlinked mentions (entity→captures) and
+// Detected entities (capture→entities) so the two directions stay symmetric.
 export function entityMatchTerms(ref: NoteRef | Note): string[] {
   const name = entityName(ref).trim()
-  const firstWord = name.split(/\s+/)[0] ?? ''
-  const raw = [name, firstWord, ...entityAliases(ref)]
+  const raw = [name, ...entityAliases(ref)]
+  if (entityTypeOf(ref) === 'person') {
+    const firstWord = name.split(/\s+/)[0] ?? ''
+    if (firstWord.length >= 3 && !FIRST_WORD_STOP.has(firstWord.toLowerCase())) {
+      raw.push(firstWord)
+    }
+  }
   const out: string[] = []
   const seen = new Set<string>()
   for (const t of raw) {
