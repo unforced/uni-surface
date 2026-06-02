@@ -31,8 +31,97 @@ against your local vault or your Tailscale URL, whichever you paste in.
 - **Browse** (`/browse`) — all entities grouped by type, with summaries + filters.
 - **Global search** (`⌘K` / `Ctrl-K`) — a command palette over captures (full-text)
   and entities.
+- **Weave** (`/weave`) — one home for tending the graph, two tabs:
+  - **Proposals** — the Weaver's suggestions, each a friendly editable form (no JSON):
+    create an entity, link to an existing one, add an alias, or *update an entity's
+    state*. Edit any field, pick which captures link, accept — or skip.
+  - **Unwoven** — orphan captures (`has_links=false`) to triage and weave.
+- **Entity detail** also surfaces **Unlinked mentions** (captures that name this entity
+  but aren't linked — Obsidian-style, alias-aware) and **Connections** (structural
+  entity↔entity links, e.g. a person *works-on* a project) distinct from **Related**
+  (capture co-occurrence).
 - Warm / light by default; a dark toggle is in the top bar. Theme + connection are
   remembered in `localStorage`.
+
+## The model — schema & strategies
+
+This app is opinionated about *how* to keep a personal knowledge graph alive. The
+vault itself is unopinionated (notes + tags + links); the strategies below are the
+operator's, encoded here so you can borrow or fork them.
+
+### Data model
+
+- **Captures** — your journal stream. Tagged `capture/text` or `capture/voice` (both
+  inherit a `capture` parent); dream entries also carry `dream-log`. Pathed
+  `Notes/YYYY/MM-DD/HH-MM-SS` (text) or `Memos/…` (voice), **dated by when they
+  happened**. *Captures are sacred*: automated tooling only ever adds **links** to
+  them — never edits their content. You are the only one who edits a capture.
+- **Entities** — everything else, all under an **`entity`** parent tag (so
+  `?tag=entity` returns them all, and they share two inherited fields: a one-line
+  **`summary`** and an **`aliases`** string array). Types:
+  `project · person · place · thread · practice · tool · reference · organization · seed`.
+  Type-specific metadata: `project` → `status` (active/incubating/dormant/archived) +
+  `role`; `person` → `relation` (friend/family/collaborator/influence); `place` /
+  `reference` → `kind`. (`seed` is a favorite: an idea that hasn't *blossomed* into a
+  project yet.)
+- **Links** — the edges, and their relationship matters:
+  - **capture → entity = `mentions`** by default (a capture *mentions* things). The
+    genuinely-structural exceptions: `place → at`, `thread → part-of`,
+    `practice → practices`.
+  - **entity ↔ entity = structural**, with specific relationships — e.g. a person
+    `works-on` a project. These are the graph's *bones*, navigable independent of any
+    capture.
+  - **aliases widen matching**: bare "Rachel" resolves to the person who holds
+    "Rachel" as an alias; the full "Rachel Friend" routes to the other Rachel.
+
+### The weaving strategy — AI as rememberer, not governor
+
+Three tiers; nothing mutates the graph without you:
+
+1. **Deterministic linking** (no AI) — distinctive name/alias matches link cheaply.
+   First-word matching is **people-only** (a verb that starts a title — "*Write* of
+   Passage" — isn't a person, so it doesn't match every "write").
+2. **The Weaver (AI)** — reads captures and *proposes*: new entities, links, and — in
+   **tend-mode** — a refreshed entity **state** (a *Where it stands / Open loops /
+   Open questions* dossier synthesized from recent captures). It never writes to the
+   graph directly; it only emits proposals.
+3. **You** — review in **Weave**. Approve / edit / skip. The AI tends continuously,
+   you steer.
+
+### Proposals are editable JSON *intents*
+
+A proposal is a `proposal`-tagged note whose **content is a JSON intent** — one of
+`create_entity`, `link`, `add_alias`, `update_entity` — rendered as a friendly form
+(the app never shows raw JSON). Approving runs deterministic vault calls (create the
+node, add the links). Two details worth stealing:
+
+- **Curated captures** — an entity proposal carries the exact `capture_ids` the AI
+  confirmed (false positives dropped), so accepting links the *right* ones.
+- **Version-guarded updates** — an `update_entity` proposal stamps the entity's
+  `updated_at` at proposal-time and accepts with `if_updated_at`. If the entity
+  changed since, it **warns and offers "re-apply on latest"** instead of clobbering.
+
+### Disambiguation — the "Rachel rule"
+
+When a name fits two entities: **full-name phrase match wins** → else the **bare name
+defaults to the *primary*** (the entity holding the bare name as an alias) → else the
+LLM reads surrounding context. Most of it is deterministic; the LLM is the fallback
+for the genuinely-ambiguous tail.
+
+### Symmetry — three one-click weaving surfaces
+
+All alias-aware, so the graph never quietly drifts incomplete:
+
+- **Proposals** — *new* entities the AI discovered.
+- **Unlinked mentions** (entity page) — captures that *name this entity* but aren't linked.
+- **Detected entities** (capture weave) — entities *this capture names*.
+
+### The shape
+
+Two beats: **Today** to live and capture, **Weave** to tend the graph. The operator's
+framing (from their own essays): the vault is the *head of the octopus* — the living
+center — structure held lightly (form in service of flow); the aim is *amplifying
+aliveness* — the graph reflecting your life back and holding what's next.
 
 ## Connecting (sign in — no token to copy)
 
@@ -80,7 +169,7 @@ Requires [Bun](https://bun.sh) (falls back to npm fine — swap `bun` for `npm`)
 
 ```bash
 bun install
-bun run dev      # http://localhost:5173/my-vault-ui/
+bun run dev      # http://localhost:5173/
 bun run build    # type-check + production bundle into dist/
 bun run preview  # serve the production build
 ```
@@ -94,20 +183,19 @@ gh repo create my-vault-ui --public --source=. --remote=origin --push
 Then in the repo on GitHub: **Settings → Pages → Build and deployment → Source:
 GitHub Actions**. The included workflow (`.github/workflows/deploy.yml`) builds
 with Bun and publishes `dist/` via `upload-pages-artifact` + `deploy-pages` on
-every push to `main`. Your site lands at
-`https://<you>.github.io/my-vault-ui/`.
+every push to `main`.
 
-### Changing the base path
+### Base path & custom domain
 
-This is a **project site**, so Vite's `base` is set to `/my-vault-ui/` in
-[`vite.config.ts`](vite.config.ts). The router reads it automatically.
+This deployment runs at a **custom domain** (`my.unforced.org`), so Vite's `base` is
+`'/'` in [`vite.config.ts`](vite.config.ts) and [`public/CNAME`](public/CNAME) carries
+the domain (baked into the build so Actions deploys don't drop it). `public/404.html`
+is a small SPA fallback that bounces deep links to root, where the router restores the
+path.
 
-- Different repo name? Change `base` to `/<your-repo>/`.
-- Custom domain or a user/org page (`<you>.github.io`)? Change `base` to `'/'`.
-
-`public/404.html` is a small SPA fallback so deep links (e.g. an entity URL) load
-correctly on Pages; it assumes the same single base segment — no edit needed for a
-normal project site, but set it aside if you move to a custom domain root.
+If you're **not** using a custom domain — i.e. a project site at
+`https://<you>.github.io/<repo>/` — set `base` to `/<repo>/`, delete `public/CNAME`,
+and the 404 fallback's root bounce still works.
 
 ## Tech & dependencies
 
@@ -122,20 +210,25 @@ Vite + React + TypeScript, React Router, static-only. Deliberately few deps:
 
 Fonts: Fraunces (serif headings) + Inter (body), loaded from Google Fonts.
 
-### A note on voice attachments
+### Voice attachments
 
-Voice captures embed `![[memo-*.webm]]`. The vault's file-serving route isn't part
-of the documented REST surface, so `AudioEmbed` tries a few plausible URLs and, if
-none serve the file, shows a calm "audio attachment present" note instead of
-breaking. If your host exposes attachments at a known path, that's the one place to
-adjust (`src/components/AudioEmbed.tsx`).
+Voice captures embed `![[memo-*.webm]]`. The audio is served at
+`<vault>/api/storage/<attachment.path>` (auth-gated), so `AudioEmbed` fetches it with
+the bearer token → object URL → `<audio>` player, with the transcript shown alongside.
+New voice captures upload via `POST /api/storage/upload` (field `file`) then
+`POST /api/notes/{id}/attachments` with `transcribe:true`.
 
 ## Layout
 
 ```
 src/
-  vault/          API client, config (localStorage auth), types, helpers, entity index
-  components/     EntityChip, CaptureCard, WeaveEditor, Markdown (wikilinks), SearchPalette, AudioEmbed, icons
-  routes/         Config (connect), Today, CaptureDetail, EntityDetail, Browse
+  vault/          API client, config (localStorage auth), types, helpers,
+                  entity index, oauth (PKCE+DCR), pkce, proposalSpec (JSON intents)
+  components/     EntityChip, CaptureCard, WeaveEditor, Markdown (wikilinks),
+                  SearchPalette, AudioEmbed, Capture (new-capture composer),
+                  CaptureTriage, DetectedEntities, UnlinkedMentions,
+                  ProposalCard / CreateEntityCard / UpdateEntityCard, icons
+  routes/         Config (connect), OAuthCallback, Today, Weave (proposals + unwoven),
+                  CaptureDetail, EntityDetail, Browse
   styles.css      the warm/organic theme
 ```
