@@ -17,7 +17,9 @@ import {
   formatTime,
   previewText,
   sourceCaptures,
+  structuralConnections,
 } from '../vault/util'
+import { RELATIONSHIP_LABELS } from '../vault/types'
 
 // type-specific metadata fields to surface
 const TYPE_FIELDS: Record<string, string[]> = {
@@ -89,8 +91,11 @@ export function EntityDetail() {
               )}
             </div>
 
-            {/* Related entities (co-occurrence) */}
-            <RelatedRail entity={data} captureNotes={captureNotes.data ?? []} />
+            {/* Right rail: structural connections (entity↔entity) + co-occurrence */}
+            <div className="detail-rail">
+              <ConnectionsRail entity={data} />
+              <RelatedRail entity={data} captureNotes={captureNotes.data ?? []} />
+            </div>
           </div>
         </>
       )}
@@ -193,6 +198,48 @@ function CaptureTimeline({ notes }: { notes: Note[] }) {
         </div>
       ))}
     </>
+  )
+}
+
+// Direct entity↔entity links (structural connections) — distinct from the
+// capture co-occurrence "Related" rail. Shows the far-end entity + the labeled
+// relationship, with direction (outgoing "works-on → X", incoming "X works-on").
+function ConnectionsRail({ entity }: { entity: Note }) {
+  const connections = useMemo(() => structuralConnections(entity), [entity])
+  if (connections.length === 0) return null
+  const relLabel = (rel: string) => RELATIONSHIP_LABELS[rel] ?? rel
+  return (
+    <aside className="related-card connections-card">
+      <div className="section-title" style={{ marginBottom: 12 }}>Connections</div>
+      <div className="related-list">
+        {connections.map((c) => (
+          <Link
+            key={`${c.other.id}|${c.relationship}|${c.outgoing ? 'o' : 'i'}`}
+            to={entityHref(c.other)}
+            className={`board-item t-${c.type ?? ''}`}
+          >
+            <div className="bi-name" style={{ fontSize: 13.5 }}>
+              <span className="status-dot" style={{ background: 'var(--tc, var(--ink-faint))' }} />
+              {entityName(c.other)}
+            </div>
+            <div className="conn-rel">
+              {c.outgoing ? (
+                <>
+                  <span className="conn-rel-edge">{relLabel(c.relationship)}</span>
+                  <span className="conn-rel-arrow"> → </span>
+                  {entityName(c.other)}
+                </>
+              ) : (
+                <>
+                  {entityName(c.other)}{' '}
+                  <span className="conn-rel-edge">{relLabel(c.relationship)}</span>
+                </>
+              )}
+            </div>
+          </Link>
+        ))}
+      </div>
+    </aside>
   )
 }
 

@@ -37,6 +37,7 @@ import {
   type SpecCapture,
 } from '../vault/proposalSpec'
 import { CaptureView } from './CaptureView'
+import { UpdateEntityCard } from './UpdateEntityCard'
 import { LinkIcon, PlusIcon } from './icons'
 
 const RELATIONSHIPS = ['relates-to', 'mentions', 'at', 'part-of', 'practices', 'uses', 'references']
@@ -50,7 +51,28 @@ interface CaptureRow {
   relationship?: string
 }
 
+// Dispatcher: route to the right card by proposal kind. `update_entity` gets a
+// distinct before/after refresh card; everything else (create_entity / link /
+// add_alias) keeps the existing create-or-link card. Parsing here is a plain
+// function call (the heavy `useMemo` lives inside each card), so no hook-order
+// concern — and each proposal's kind is stable for the card's lifetime.
 export function ProposalCard({
+  proposal,
+  onResolved,
+  onPartial,
+}: {
+  proposal: Note
+  onResolved: (id: string, msg: string) => void
+  onPartial: (id: string, msg: string) => void
+}) {
+  const spec = parseProposalSpec(proposal)
+  if (spec.kind === 'update_entity' && spec.update) {
+    return <UpdateEntityCard proposal={proposal} spec={spec} onResolved={onResolved} />
+  }
+  return <CreateEntityCard proposal={proposal} onResolved={onResolved} onPartial={onPartial} />
+}
+
+function CreateEntityCard({
   proposal,
   onResolved,
   onPartial,

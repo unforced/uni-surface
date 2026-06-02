@@ -734,6 +734,20 @@ button { font-family: inherit; cursor: pointer; }
 .related-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; box-shadow: var(--shadow-soft); position: sticky; top: 84px; }
 .related-list { display: flex; flex-direction: column; gap: 3px; }
 
+/* Right rail: stack Connections (entity↔entity) above Related (co-occurrence).
+   The rail itself sticks; the cards flow normally inside it. */
+.detail-rail { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 84px; }
+.detail-rail .related-card { position: static; top: auto; }
+.connections-card .board-item { padding: 9px 11px; }
+.conn-rel {
+  font-size: 11.5px; color: var(--ink-faint); margin-top: 3px; line-height: 1.4;
+  padding-left: 16px; /* align under the name, past the status dot */
+}
+.conn-rel-edge {
+  color: var(--tc, var(--clay)); font-weight: 600;
+}
+.conn-rel-arrow { color: var(--ink-faint); }
+
 /* ── Unlinked mentions (entity detail) ─────────────── */
 .unlinked-head {
   display: flex; align-items: center; gap: 12px; width: 100%;
@@ -1333,3 +1347,53 @@ button { font-family: inherit; cursor: pointer; }
   font-family: inherit; font-size: 14px; color: var(--ink); padding: 4px 2px;
 }
 .pc-chip-input:focus { outline: none; }
+
+/* ── update_entity proposal card (refresh an entity's summary + content) ── */
+.pc-update .pc-update-target {
+  color: var(--clay); font-weight: 600;
+  border-bottom: 1px solid var(--terracotta-wash); padding-bottom: 1px;
+}
+.pc-update .pc-update-target:hover { border-color: var(--clay); }
+
+/* Staleness / conflict banner — warm-warning (clay), prominent. */
+.pc-conflict {
+  margin-top: 14px; padding: 13px 15px;
+  background: color-mix(in srgb, var(--clay) 8%, var(--surface));
+  border: 1px solid var(--clay-soft); border-left: 3px solid var(--clay);
+  border-radius: 13px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.pc-conflict-text { font-size: 13.5px; color: var(--ink); line-height: 1.5; flex: 1; min-width: 200px; }
+.pc-conflict-text strong { font-weight: 600; color: var(--clay); }
+.pc-conflict-btn { white-space: nowrap; flex: none; }
+
+.pc-update-panes { margin-top: 16px; }
+.pc-update-pane { display: flex; flex-direction: column; gap: 8px; }
+.pc-pane-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pc-pane-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-faint); font-weight: 600;
+}
+.pc-pane-hint { font-size: 11.5px; color: var(--ink-faint); }
+.pc-update-editor {
+  font-family: ui-monospace, 'SF Mono', monospace; font-size: 13px; line-height: 1.6;
+  min-height: 180px;
+}
+/* Live rendered preview of the (edited) proposed markdown. */
+.pc-update-preview {
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface-2); padding: 4px 16px;
+  max-height: 320px; overflow-y: auto;
+}
+.pc-update-preview .markdown { font-size: 14.5px; line-height: 1.6; }
+
+.pc-update-current { margin-top: 16px; }
+.pc-update-current-body {
+  margin-top: 10px; padding: 14px 16px;
+  border: 1px dashed var(--line); border-radius: var(--r-md);
+  background: var(--surface-2);
+  max-height: 320px; overflow-y: auto;
+  animation: fade 0.2s ease;
+}
+.pc-update-current-summary { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 10px; line-height: 1.5; }
+.pc-update-current-body .markdown { font-size: 14px; line-height: 1.55; }

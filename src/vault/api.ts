@@ -14,6 +14,18 @@ export class VaultError extends Error {
   }
 }
 
+// Optimistic-concurrency failure: the note changed since the `if_updated_at` we
+// sent. The vault answers 409 with the live `current_updated_at`, which we carry
+// so the UI can offer a "re-apply on latest" path without a second round-trip.
+export class VaultConflictError extends VaultError {
+  currentUpdatedAt: string | null
+  constructor(message: string, currentUpdatedAt: string | null) {
+    super(409, message)
+    this.name = 'VaultConflictError'
+    this.currentUpdatedAt = currentUpdatedAt
+  }
+}
+
 function requireConfig() {
   const cfg = getConfig()
   if (!cfg) throw new VaultError(0, 'Vault not configured')
@@ -104,11 +116,18 @@ async function request<T>(
   }
   if (!res.ok) {
     let detail = res.statusText
+    let body: Record<string, unknown> | null = null
     try {
-      const j = await res.json()
-      detail = (j && (j.error || j.message)) || detail
+      body = (await res.json()) as Record<string, unknown>
+      detail = (body && (body.message || body.error)) ? String(body.message || body.error) : detail
     } catch {
       /* ignore */
+    }
+    // Optimistic-concurrency conflict (stale if_updated_at): surface the live
+    // updated_at so callers can reconcile + re-apply.
+    if (res.status === 409 || body?.error_type === 'conflict') {
+      const cur = body?.current_updated_at
+      throw new VaultConflictError(detail, typeof cur === 'string' ? cur : null)
     }
     if (res.status === 401 || res.status === 403) {
       const hint = isOAuth()
@@ -188,6 +207,38 @@ export function patchNote(id: string, patch: PatchNote): Promise<Note> {
     ...patch,
     force: true,
   })
+}
+
+// Optimistic-concurrency PATCH: applies only if the note's live `updated_at`
+// still equals `ifUpdatedAt`; otherwise the vault answers 409 and we throw a
+// VaultConflictError carrying the live updated_at (so the caller can reconcile).
+// NOTE: `if_updated_at` takes precedence over `force` server-side — we MUST NOT
+// send `force` here, or a stale precondition would still (correctly) 409.
+export function patchNoteIf(
+  id: string,
+  patch: PatchNote,
+  ifUpdatedAt: string,
+): Promise<Note> {
+  return request<Note>('PATCH', `/notes/${encodeURIComponent(id)}`, {
+    ...patch,
+    if_updated_at: ifUpdatedAt,
+  })
+}
+
+// Refresh an entity's summary (metadata) + markdown content. When `ifUpdatedAt`
+// is given, the write is guarded (conflict-aware); otherwise it force-applies
+// (used by "re-apply on latest" after the human has reconciled). `idOrPath` may
+// be the entity path (the update_entity spec's `target`) or its id.
+export function updateEntityContent(
+  idOrPath: string,
+  content: string,
+  summary: string,
+  ifUpdatedAt?: string,
+): Promise<Note> {
+  const patch: PatchNote = { content, metadata: { summary } }
+  return ifUpdatedAt
+    ? patchNoteIf(idOrPath, patch, ifUpdatedAt)
+    : patchNote(idOrPath, patch)
 }
 
 export interface CreateNote {

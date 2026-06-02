@@ -55,13 +55,26 @@ export interface SpecLinks {
   captures: SpecCapture[]
 }
 
+// The `update_entity` kind: a proposal to REFRESH an existing entity's summary
+// + content (no new entity, no capture links). It carries the target path, the
+// entity's `updated_at` AT THE TIME THE PROPOSAL WAS MADE (for optimistic
+// concurrency on accept), and the proposed new summary + markdown content.
+export interface SpecUpdate {
+  target: string
+  baseUpdatedAt: string
+  summary: string
+  content: string
+}
+
 export interface ProposalSpec {
   v: number
-  kind: string // e.g. "create_entity"
+  kind: string // "create_entity" | "update_entity" | …
   confidence: number
   evidence: string
   entity: SpecEntity
   links: SpecLinks
+  // Present only when kind === 'update_entity'.
+  update?: SpecUpdate
 }
 
 // Folder per entity type — the path derives as `<Folder>/<name>`. Mirrors
@@ -69,22 +82,34 @@ export interface ProposalSpec {
 export const TYPE_FOLDER = ENTITY_FOLDER
 
 // Which relationship a given entity type usually wants its captures linked by.
+// Default is `mentions` — most capture→entity links are just an honest mention,
+// not a structural claim. Only the genuinely structural edges override that:
+// place→at, thread→part-of, practice→practices. Person, project, organization,
+// seed, reference, tool all default to `mentions`.
 export function suggestRel(type: EntityType): string {
   switch (type) {
-    case 'person': return 'mentions'
     case 'place': return 'at'
     case 'thread': return 'part-of'
     case 'practice': return 'practices'
-    case 'tool': return 'uses'
-    case 'reference': return 'references'
-    case 'project': return 'relates-to'
-    default: return 'relates-to'
+    default: return 'mentions'
   }
 }
 
 // Build the canonical path for a type + name (folder by type).
 export function specPath(type: EntityType, name: string): string {
   return `${TYPE_FOLDER[type]}/${name.trim()}`
+}
+
+// Reverse of TYPE_FOLDER: a path's leading folder → its entity type (e.g.
+// "Projects/Parachute" → "project"). Used for update_entity, whose spec carries
+// only a target path. Returns null when the folder isn't a known entity root.
+const FOLDER_TYPE: Record<string, EntityType> = Object.fromEntries(
+  Object.entries(TYPE_FOLDER).map(([type, folder]) => [folder, type as EntityType]),
+) as Record<string, EntityType>
+
+export function entityTypeFromPath(path: string): EntityType | null {
+  const folder = path.split('/')[0] ?? ''
+  return FOLDER_TYPE[folder] ?? null
 }
 
 // The type-specific fields that should render for a given type, with their
@@ -206,7 +231,40 @@ export function parseProposalSpec(note: Note): ProposalSpec {
   const raw = (note.content ?? '').trim()
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as Partial<ProposalSpec>
+      const parsed = JSON.parse(raw) as Partial<ProposalSpec> & {
+        target?: unknown
+        base_updated_at?: unknown
+        update?: { summary?: unknown; content?: unknown }
+      }
+      // ── update_entity: a refresh of an existing entity's summary + content. ──
+      if (parsed && typeof parsed === 'object' && parsed.kind === 'update_entity') {
+        const target = String(parsed.target ?? '').trim()
+        const type = (entityTypeFromPath(target) ?? 'reference') as EntityType
+        const name = target.split('/').pop() ?? target
+        return {
+          v: typeof parsed.v === 'number' ? parsed.v : 1,
+          kind: 'update_entity',
+          confidence: Number.isFinite(Number(parsed.confidence)) ? Number(parsed.confidence) : 0,
+          evidence: String(parsed.evidence ?? ''),
+          // A minimal entity stub so type-derived styling (the t-<type> class)
+          // and grouping keep working; the real payload lives in `update`.
+          entity: {
+            type,
+            name,
+            path: target,
+            summary: String(parsed.update?.summary ?? ''),
+            aliases: [],
+            fields: {},
+          },
+          links: { relationship: suggestRel(type), captures: [] },
+          update: {
+            target,
+            baseUpdatedAt: String(parsed.base_updated_at ?? ''),
+            summary: String(parsed.update?.summary ?? ''),
+            content: String(parsed.update?.content ?? ''),
+          },
+        }
+      }
       if (parsed && typeof parsed === 'object' && parsed.entity) {
         const e = parsed.entity
         const type = ((e.type as EntityType) ?? 'reference') as EntityType

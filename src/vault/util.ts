@@ -357,6 +357,39 @@ export function linkedEntities(note: Note): LinkedEntity[] {
   return out
 }
 
+// A direct entity↔entity link (structural), from one entity's `links` array.
+// `other` is the entity on the far end; `relationship` is the edge; `outgoing`
+// is true when THIS entity is the link's source (so the UI can phrase direction:
+//   outgoing → "works-on → Games.Coop"
+//   incoming → "Lucian Hymer works-on").
+export interface StructuralConnection {
+  other: NoteRef
+  relationship: string
+  outgoing: boolean
+  type: ReturnType<typeof entityTypeOf>
+}
+
+// The entity's DIRECT links to OTHER ENTITIES (not captures) — its structural
+// connections. We look at each link, pick the end that ISN'T this entity, and
+// keep it only when that end carries an entity type tag. Deduped by (other id +
+// relationship + direction) so the same edge isn't listed twice.
+export function structuralConnections(entity: Note): StructuralConnection[] {
+  const out: StructuralConnection[] = []
+  const seen = new Set<string>()
+  for (const l of entity.links ?? []) {
+    const outgoing = l.sourceId === entity.id
+    const ref = outgoing ? l.targetNote : l.sourceNote
+    if (!ref || ref.id === entity.id) continue
+    const type = entityTypeOf(ref)
+    if (!type) continue // far end isn't an entity (likely a capture) — skip
+    const key = `${ref.id}|${l.relationship}|${outgoing ? 'o' : 'i'}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ other: ref, relationship: l.relationship, outgoing, type })
+  }
+  return out
+}
+
 // The capture sources that link TO an entity (from an entity's links array).
 export function sourceCaptures(entity: Note): NoteRef[] {
   const out: NoteRef[] = []
