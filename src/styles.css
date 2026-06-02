@@ -1117,3 +1117,73 @@ button { font-family: inherit; cursor: pointer; }
 .pc-keepopen { white-space: nowrap; }
 .pc-cap-row.linked { opacity: 0.55; }
 .pc-cap-linked { color: var(--sage); font-weight: 600; }
+
+/* ── Read-view facets (path · type-field · aliases) ── */
+.pc-facets {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 12px;
+  margin: 9px 0 0; font-size: 12.5px; color: var(--ink-soft);
+}
+.pc-facets-path {
+  font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;
+  color: var(--ink-faint);
+}
+.pc-facet {
+  text-transform: capitalize;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-pill); padding: 2px 9px;
+}
+.pc-facet-aliases { text-transform: none; color: var(--ink-soft); }
+
+/* ── The friendly edit form (NO raw JSON) ── */
+.pc-form {
+  margin-top: 16px; padding: 18px;
+  background: var(--surface-2); border: 1px dashed var(--line);
+  border-radius: 14px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.pc-field { display: flex; flex-direction: column; gap: 6px; }
+.pc-field .field-label { margin: 0; }
+.pc-field-hint {
+  font-size: 11.5px; color: var(--ink-faint);
+  font-family: ui-monospace, 'SF Mono', monospace;
+}
+.pc-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 560px) { .pc-field-row { grid-template-columns: 1fr; } }
+
+.pc-select {
+  padding: 10px 13px; border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); font-family: inherit; font-size: 14px; color: var(--ink);
+  text-transform: capitalize;
+}
+.pc-select:focus { outline: none; border-color: var(--clay-soft); }
+
+.pc-textarea {
+  padding: 11px 14px; border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); font-family: inherit; font-size: 14.5px; color: var(--ink);
+  line-height: 1.55; resize: vertical; min-height: 70px;
+}
+.pc-textarea:focus { outline: none; border-color: var(--clay-soft); }
+
+/* Aliases — chip/tag input */
+.pc-chips {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface);
+}
+.pc-chips:focus-within { border-color: var(--clay-soft); }
+.pc-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 6px 3px 11px; border-radius: var(--r-pill);
+  background: var(--moss-wash); border: 1px solid var(--sage-soft);
+  font-size: 13px; font-weight: 500; color: var(--ink);
+}
+.pc-chip-x {
+  border: none; background: none; color: var(--ink-soft);
+  font-size: 16px; line-height: 1; padding: 0 2px; cursor: pointer;
+}
+.pc-chip-x:hover { color: var(--clay); }
+.pc-chip-input {
+  flex: 1; min-width: 120px; border: none; background: none;
+  font-family: inherit; font-size: 14px; color: var(--ink); padding: 4px 2px;
+}
+.pc-chip-input:focus { outline: none; }

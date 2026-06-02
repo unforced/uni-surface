@@ -5,14 +5,16 @@ import { type EntityType } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { Loading, ErrorBanner, EmptyState, Toast } from '../components/common'
 import { ProposalCard } from '../components/ProposalCard'
+import { parseProposalSpec } from '../vault/proposalSpec'
 
-// Read a proposal's Weaver metadata with sane fallbacks.
+// Read a proposal's type/confidence for grouping + sorting. Prefers the JSON
+// intent in the note content (the new shape); falls back to metadata.* for
+// older proposals (parseProposalSpec handles both transparently).
 export function proposalEntityType(p: Note): EntityType {
-  return (p.metadata?.entity_type as EntityType) ?? 'reference'
+  return parseProposalSpec(p).entity.type
 }
 export function proposalConfidence(p: Note): number {
-  const c = Number(p.metadata?.confidence)
-  return Number.isFinite(c) ? c : 0
+  return parseProposalSpec(p).confidence
 }
 
 // Sort: highest confidence first, grouped under entity-type headings.

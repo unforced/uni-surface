@@ -264,7 +264,9 @@ export async function listPendingProposals(): Promise<Note[]> {
   const meta = encodeURIComponent(JSON.stringify({ status: { eq: 'pending' } }))
   const all = await request<Note[]>(
     'GET',
-    `/notes?tag=proposal&metadata=${meta}&include_metadata=true&limit=200`,
+    // include_content: the Weaver intent now lives in the note's JSON content
+    // (parsed into the editable form); metadata is kept for transition fallback.
+    `/notes?tag=proposal&metadata=${meta}&include_metadata=true&include_content=true&limit=200`,
   )
   return all.filter((p) => (p.metadata?.status ?? 'pending') === 'pending')
 }
@@ -311,17 +313,26 @@ export async function fetchCapturesByIds(ids: string[]): Promise<Note[]> {
 // Create the entity note at `<Root>/<name>`; it inherits the `entity` parent
 // automatically via its type tag. `aliases` (optional) are written to
 // metadata.aliases so short forms (e.g. "Ji" → "Sandhiji Davis") resolve later.
+// `fields` (optional) are type-specific metadata (project→{status,role},
+// person→{relation}, …) merged into the entity's metadata verbatim. Empty
+// values are dropped so e.g. a blank role doesn't write an empty key.
 export function createEntity(
   type: EntityType,
   name: string,
   summary: string,
   aliases: string[] = [],
+  fields: Record<string, unknown> = {},
 ): Promise<Note> {
   const path = entityPath(type, name)
   const cleanAliases = dedupeAliases(aliases)
   const metadata: NoteMetadata = {}
   if (summary.trim()) metadata.summary = summary.trim()
   if (cleanAliases.length) metadata.aliases = cleanAliases
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined || v === null) continue
+    if (typeof v === 'string' && v.trim() === '') continue
+    ;(metadata as Record<string, unknown>)[k] = v
+  }
   return createNote({
     path,
     content: `# ${name.trim()}\n${summary.trim() ? `\n${summary.trim()}\n` : ''}`,
@@ -357,6 +368,17 @@ export function linkCapture(
 // Resolve a proposal — keep it as an audit record (don't delete).
 export function resolveProposal(id: string, status: ProposalStatus): Promise<Note> {
   return patchNote(id, { metadata: { status } })
+}
+
+// Resolve a proposal AND persist the (edited) intent into its content, so the
+// note records exactly what was executed. `content` is the JSON.stringify'd
+// spec; status flips to the given value (usually 'approved').
+export function resolveProposalWithSpec(
+  id: string,
+  content: string,
+  status: ProposalStatus,
+): Promise<Note> {
+  return patchNote(id, { content, metadata: { status } })
 }
 
 // ---- Attachments & storage ----

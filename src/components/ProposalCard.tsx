@@ -3,11 +3,11 @@ import {
   addAlias,
   createEntity,
   dedupeAliases,
-  entityPath,
   fetchCapturesByIds,
   getNote,
   linkCapture,
   resolveProposal,
+  resolveProposalWithSpec,
   searchCaptures,
 } from '../vault/api'
 import type { Note } from '../vault/types'
@@ -22,38 +22,21 @@ import {
   mentionSnippet,
   previewText,
 } from '../vault/util'
-import { LinkIcon, PlusIcon } from './icons'
 import {
-  proposalEntityType,
-  proposalConfidence,
-} from '../routes/Proposals'
+  parseProposalSpec,
+  suggestRel,
+  TYPE_FOLDER,
+  withName,
+  withType,
+  PROJECT_STATUSES,
+  PERSON_RELATIONS,
+  PLACE_KINDS,
+  REFERENCE_KINDS,
+  type ProposalSpec,
+} from '../vault/proposalSpec'
+import { LinkIcon, PlusIcon } from './icons'
 
 const RELATIONSHIPS = ['relates-to', 'mentions', 'at', 'part-of', 'practices', 'uses', 'references']
-
-const TYPE_FOLDER: Record<EntityType, string> = {
-  project: 'Projects',
-  person: 'People',
-  place: 'Places',
-  thread: 'Threads',
-  practice: 'Practices',
-  tool: 'Tools',
-  reference: 'References',
-  organization: 'Organizations',
-  seed: 'Seeds',
-}
-
-function suggestRel(type: EntityType): string {
-  switch (type) {
-    case 'person': return 'mentions'
-    case 'place': return 'at'
-    case 'thread': return 'part-of'
-    case 'practice': return 'practices'
-    case 'tool': return 'uses'
-    case 'reference': return 'references'
-    case 'project': return 'relates-to'
-    default: return 'relates-to'
-  }
-}
 
 // One supporting capture, with its selected/deselected state.
 interface CaptureRow {
@@ -71,74 +54,71 @@ export function ProposalCard({
   // Capability C: report work done WITHOUT resolving (proposal stays pending).
   onPartial: (id: string, msg: string) => void
 }) {
-  const meta = proposal.metadata ?? {}
-  const baseType = proposalEntityType(proposal)
-  const baseName = String(meta.entity_name ?? entityName(proposal))
-  const baseSummary = String(meta.entity_summary ?? '')
-  const evidence = String(meta.evidence ?? '')
-  const confidence = proposalConfidence(proposal)
-  const baseRel = String(meta.relationship ?? suggestRel(baseType))
+  // The Weaver intent: parsed from the note's JSON content, or rebuilt from
+  // metadata.* for older proposals (transition safety). This is the seed for
+  // the editable form; every edit updates a LOCAL copy (`spec`) — the note is
+  // only written on Accept.
+  const baseSpec = useMemo(() => parseProposalSpec(proposal), [proposal])
+  const [spec, setSpec] = useState<ProposalSpec>(baseSpec)
+
+  // Convenience reads off the live (edited) spec.
+  const type = spec.entity.type
+  const name = spec.entity.name
+  const summary = spec.entity.summary
+  const aliases = spec.entity.aliases
+  const fields = spec.entity.fields
+  const relationship = spec.links.relationship
+  const evidence = spec.evidence
+  const confidence = spec.confidence
+  // The proposal's ORIGINAL name (for dedup matching + alias-on-retarget),
+  // independent of any edits the human makes to the name field.
+  const baseName = baseSpec.entity.name
 
   // Terms to look for inside each supporting capture's text: the full entity
-  // name, its first word (covers bare-name mentions like "Rachel" for "Rachel
-  // Isaacson"), and any proposal aliases. Used to extract a highlighted mention
-  // snippet per row so the human can verify the link is genuinely about this
-  // entity before accepting.
+  // name, its first word, and any aliases. Drives the highlighted mention
+  // snippet per row so the human can verify the link before accepting.
   const matchTerms = useMemo<string[]>(() => {
     const out: string[] = []
-    const name = baseName.trim()
-    if (name) {
-      out.push(name)
-      const first = name.split(/\s+/)[0]
-      if (first && first !== name) out.push(first)
+    const n = name.trim()
+    if (n) {
+      out.push(n)
+      const first = n.split(/\s+/)[0]
+      if (first && first !== n) out.push(first)
     }
-    const aliases = meta.aliases
-    if (Array.isArray(aliases)) {
-      for (const a of aliases) {
-        const v = String(a).trim()
-        if (v) out.push(v)
-      }
+    for (const a of aliases) {
+      const v = a.trim()
+      if (v) out.push(v)
     }
     return out
-  }, [baseName, meta.aliases])
+  }, [name, aliases])
 
   const { entities, reload: reloadEntities } = useEntityIndex()
 
-  // ── Revise state (name / type / summary the human can correct) ──
-  const [revising, setRevising] = useState(false)
-  const [name, setName] = useState(baseName)
-  const [type, setType] = useState<EntityType>(baseType)
-  const [summary, setSummary] = useState(baseSummary)
-  const [relationship, setRelationship] = useState(baseRel)
-  // Capability B: editable aliases for "create new" (comma-separated input).
-  const [aliasesText, setAliasesText] = useState('')
-  // Capability B: when re-targeting, also add the original name as an alias.
-  const [addNameAsAlias, setAddNameAsAlias] = useState(true)
+  // ── Edit mode: reveal the friendly form ──
+  const [editing, setEditing] = useState(false)
+  // Chip input draft for a new alias.
+  const [aliasDraft, setAliasDraft] = useState('')
 
   // ── Re-target: link to an EXISTING entity instead of creating one ──
   const [target, setTarget] = useState<Note | null>(null) // chosen existing entity
   const [entityQuery, setEntityQuery] = useState('')
+  // When re-targeting, also add the original name as an alias.
+  const [addNameAsAlias, setAddNameAsAlias] = useState(true)
 
   // ── Supporting captures (the evidence) ──
-  // Curated path: when the proposal carries metadata.capture_ids, THOSE captures
-  // are the supporting set (pre-checked) — not a name search. The search box then
-  // becomes an "add more captures" affordance that merges extra captures in.
-  // Fallback path (older proposals, no capture_ids): search by entity_name as
-  // before, with the search box replacing the list on each query.
-  const curatedIds = useMemo<string[]>(() => {
-    const raw = meta.capture_ids
-    if (!Array.isArray(raw)) return []
-    return raw.map((id) => String(id)).filter((id) => id.trim() !== '')
-  }, [meta.capture_ids])
+  // Curated path: the spec's links.captures ARE the supporting set (pre-checked).
+  // The search box then becomes an "add more captures" affordance. Fallback path
+  // (no captures in the spec): search by entity_name, results replace the list.
+  const curatedIds = useMemo<string[]>(
+    () => spec.links.captures.filter((id) => id.trim() !== ''),
+    // captures come from the immutable proposal via baseSpec; safe to memo on it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseSpec],
+  )
   const hasCurated = curatedIds.length > 0
 
-  // In curated mode the search box starts empty (we're NOT name-searching);
-  // in fallback mode it seeds with the entity name (the legacy behavior).
   const [searchTerm, setSearchTerm] = useState(hasCurated ? '' : baseName)
   const [rows, setRows] = useState<CaptureRow[]>([])
-  // Lazily-fetched note content keyed by capture id — search-added rows come
-  // back WITHOUT content, so we fetch it on demand to extract a mention snippet.
-  // null = fetch attempted but failed/empty (so we stop retrying that id).
   const [content, setContent] = useState<Record<string, string | null>>({})
   const [loadingCaps, setLoadingCaps] = useState(true)
   const [capError, setCapError] = useState<string | null>(null)
@@ -149,20 +129,14 @@ export function ProposalCard({
   const [progress, setProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Capability C: a running log of split actions done while keeping the card open,
-  // plus the ids of captures already linked (so they don't get re-linked).
+  // Capability C: split log + ids already linked.
   const [splitLog, setSplitLog] = useState<string[]>([])
   const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set())
 
-  // Curated path: on mount, load exactly the captures in metadata.capture_ids,
-  // pre-checked (except any already linked in a prior split pass). This is the
-  // default supporting set — NOT a name search. Runs once for curated proposals;
-  // fallback proposals skip it and rely on the search effect below.
+  // Curated path: on mount, load exactly the spec's captures, pre-checked.
   useEffect(() => {
     if (!hasCurated) return
     let cancelled = false
-    // All setState happens inside the async block (loadingCaps already starts
-    // true), so the effect body stays free of synchronous setState.
     ;(async () => {
       try {
         const found = await fetchCapturesByIds(curatedIds)
@@ -178,21 +152,16 @@ export function ProposalCard({
     return () => {
       cancelled = true
     }
-    // Mount-only for this proposal: curatedIds/hasCurated are derived from the
-    // immutable proposal; linkedIds omitted so a split pass doesn't refetch.
+    // Mount-only for this proposal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Search effect. In FALLBACK mode the term seeds with the entity name and the
-  // results REPLACE the list (legacy behavior). In CURATED mode the term starts
-  // empty and search results are MERGED in as additional captures — the curated
-  // set is never wiped — so the box acts as an "add more captures" affordance.
+  // Search effect — fallback: results REPLACE; curated: results MERGE in.
   useEffect(() => {
     window.clearTimeout(debounce.current)
     const term = searchTerm.trim()
     debounce.current = window.setTimeout(async () => {
       if (!term) {
-        // Curated: keep the curated rows in place; only the fallback list clears.
         if (!hasCurated) setRows([])
         setLoadingCaps(false)
         return
@@ -202,8 +171,6 @@ export function ProposalCard({
       try {
         const found = await searchCaptures(term)
         if (hasCurated) {
-          // Merge: add any captures not already present (curated or previously
-          // added), pre-checked, without disturbing existing rows/selection.
           setRows((prev) => {
             const have = new Set(prev.map((r) => r.note.id))
             const additions = found
@@ -212,7 +179,6 @@ export function ProposalCard({
             return additions.length ? [...prev, ...additions] : prev
           })
         } else {
-          // default: all on, EXCEPT captures already linked in a prior split pass.
           setRows(found.map((n) => ({ note: n, selected: !linkedIds.has(n.id) })))
         }
       } catch (e) {
@@ -223,14 +189,10 @@ export function ProposalCard({
       }
     }, term ? 250 : 0)
     return () => window.clearTimeout(debounce.current)
-    // linkedIds intentionally omitted: re-running on every link would refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm])
 
-  // Ensure each row has note content available for snippet extraction. Curated
-  // rows arrive with content (fetched by id); search-added rows don't, so fetch
-  // theirs lazily by id. Results (and failures, as null) are cached so we never
-  // refetch the same capture. Runs whenever the row set changes.
+  // Lazily fetch note content for search-added rows (for snippet extraction).
   useEffect(() => {
     const missing = rows
       .filter((r) => r.note.content == null && !(r.note.id in content))
@@ -244,8 +206,7 @@ export function ProposalCard({
         const next = { ...prev }
         missing.forEach((id, i) => {
           const r = settled[i]
-          next[id] =
-            r.status === 'fulfilled' ? (r.value.content ?? null) : null
+          next[id] = r.status === 'fulfilled' ? (r.value.content ?? null) : null
         })
         return next
       })
@@ -253,8 +214,6 @@ export function ProposalCard({
     return () => {
       cancelled = true
     }
-    // `content` is intentionally omitted: it's updated inside and the `id in
-    // content` guard already prevents refetching. Keying on rows is enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows])
 
@@ -267,8 +226,39 @@ export function ProposalCard({
     setRows((rs) => rs.map((r) => ({ ...r, selected: on })))
   }
 
-  // Existing-entity picker results (reuse the in-memory entity index). Searches
-  // name, summary, AND aliases so the user can find by an alias (e.g. "Sandhiji").
+  // ── Spec editors (each updates the local spec copy) ──
+  function setName(v: string) {
+    setSpec((s) => withName(s, v))
+  }
+  function setType(v: EntityType) {
+    setSpec((s) => withType(s, v))
+  }
+  function setSummary(v: string) {
+    setSpec((s) => ({ ...s, entity: { ...s.entity, summary: v } }))
+  }
+  function setRelationship(v: string) {
+    setSpec((s) => ({ ...s, links: { ...s.links, relationship: v } }))
+  }
+  function setField(key: string, v: unknown) {
+    setSpec((s) => ({ ...s, entity: { ...s.entity, fields: { ...s.entity.fields, [key]: v } } }))
+  }
+  function addAliasChip() {
+    const v = aliasDraft.trim()
+    if (!v) return
+    setSpec((s) => {
+      const next = dedupeAliases([...s.entity.aliases, v])
+      return { ...s, entity: { ...s.entity, aliases: next } }
+    })
+    setAliasDraft('')
+  }
+  function removeAliasChip(a: string) {
+    setSpec((s) => ({
+      ...s,
+      entity: { ...s.entity, aliases: s.entity.aliases.filter((x) => x !== a) },
+    }))
+  }
+
+  // Existing-entity picker (reuse the in-memory index; search name/summary/alias).
   const entityResults = useMemo(() => {
     const q = entityQuery.trim().toLowerCase()
     if (!q) return [] as Note[]
@@ -282,34 +272,30 @@ export function ProposalCard({
       .slice(0, 8)
   }, [entityQuery, entities])
 
-  // Capability A: does this proposal's name likely already exist as an entity?
-  // Only surfaced when we're still in "create new" mode (no manual re-target yet).
+  // Capability A: does this proposal's name already exist as an entity?
   const duplicate = useMemo(() => {
     if (target) return null
-    const match = findExistingEntity(baseName, entities, baseType)
+    const match = findExistingEntity(baseName, entities, baseSpec.entity.type)
     return (match as Note) ?? null
-  }, [baseName, baseType, entities, target])
+  }, [baseName, entities, target, baseSpec])
 
   // The path the captures will be linked to: an existing target, or the
-  // (possibly revised) name/type that Accept will create.
+  // (possibly edited) spec's path that Accept will create.
   const willCreate = target === null
   const effectiveType = target ? (entityTypeOf(target) ?? type) : type
-  const effectivePath = target ? target.path : entityPath(type, name)
+  const effectivePath = target ? target.path : spec.entity.path
   const effectiveName = target ? entityName(target) : name.trim()
   const effectiveRel = relationship || suggestRel(effectiveType as EntityType)
 
-  // Shared worker: create (maybe) + link selected captures. Returns a summary
-  // string + the ids linked. Does NOT resolve the proposal — callers decide.
+  // Shared worker: create (maybe) + link selected captures. Does NOT resolve.
   async function doCreateAndLink(): Promise<{ summary: string; linked: string[] }> {
     const selected = rows.filter((r) => r.selected)
     if (willCreate) {
       if (!name.trim()) throw new Error('Give the entity a name before accepting.')
       setProgress(`Creating ${type} “${name.trim()}”…`)
-      const aliasList = dedupeAliases(aliasesText.split(','))
-      await createEntity(type, name.trim(), summary, aliasList)
+      await createEntity(type, name.trim(), summary, aliases, fields)
       reloadEntities()
     } else if (addNameAsAlias && baseName.trim()) {
-      // Capability B: re-targeting → optionally add the original name as an alias.
       setProgress(`Adding “${baseName.trim()}” as an alias of ${effectiveName}…`)
       await addAlias(target!.id, baseName.trim())
       reloadEntities()
@@ -327,14 +313,28 @@ export function ProposalCard({
     return { summary: `${where}, linked ${linked} capture${linked === 1 ? '' : 's'}`, linked: linkedNow }
   }
 
-  // ── Primary Accept: create (maybe) + link + RESOLVE the proposal ──
+  // The edited spec to persist on resolve: reflects the current selected captures
+  // so the audit record matches what was executed.
+  function executedSpec(linkedNow: string[]): ProposalSpec {
+    return {
+      ...spec,
+      entity: { ...spec.entity, path: effectivePath },
+      links: {
+        ...spec.links,
+        relationship: effectiveRel,
+        captures: linkedNow.length ? linkedNow : rows.filter((r) => r.selected).map((r) => r.note.id),
+      },
+    }
+  }
+
+  // ── Primary Accept: create (maybe) + link + persist edited spec + RESOLVE ──
   async function accept() {
     setBusy(true)
     setError(null)
     try {
-      const { summary: msg } = await doCreateAndLink()
+      const { summary: msg, linked } = await doCreateAndLink()
       setProgress('Resolving proposal…')
-      await resolveProposal(proposal.id, 'approved')
+      await resolveProposalWithSpec(proposal.id, JSON.stringify(executedSpec(linked)), 'approved')
       onResolved(proposal.id, `${msg} 🌿`)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -343,8 +343,7 @@ export function ProposalCard({
     }
   }
 
-  // ── Capability A: one-click "this already exists" — link selected captures to
-  // the existing entity, add the proposal's name as an alias, resolve approved. ──
+  // ── Capability A: one-click "this already exists" ──
   async function acceptAsDuplicate(existing: Note) {
     setBusy(true)
     setError(null)
@@ -373,21 +372,17 @@ export function ProposalCard({
     }
   }
 
-  // ── Capability C: "Link selected & keep open" — do the create/link for the
-  // SELECTED captures but DON'T resolve. Proposal stays pending so the user can
-  // revise the name (e.g. second Miranda), pick the remaining captures, repeat. ──
+  // ── Capability C: "Link selected & keep open" — link a subset, DON'T resolve ──
   async function linkAndKeepOpen() {
     setBusy(true)
     setError(null)
     try {
       const { summary: msg, linked } = await doCreateAndLink()
-      // Remember what we linked so those rows stay off on the next search.
       setLinkedIds((s) => {
         const next = new Set(s)
         linked.forEach((id) => next.add(id))
         return next
       })
-      // Reflect immediately: deselect the just-linked rows.
       setRows((rs) =>
         rs.map((r) => (linked.includes(r.note.id) ? { ...r, selected: false } : r)),
       )
@@ -424,6 +419,20 @@ export function ProposalCard({
       ? `Accept · create + link ${selectedCount}`
       : `Accept · link ${selectedCount} to ${effectiveName}`
 
+  // Human-readable summary of a type-specific field for the read view.
+  const fieldSummary = useMemo(() => {
+    const parts: string[] = []
+    if (type === 'project') {
+      if (fields.status) parts.push(String(fields.status))
+      if (fields.role) parts.push(String(fields.role))
+    } else if (type === 'person' && fields.relation) {
+      parts.push(String(fields.relation))
+    } else if ((type === 'place' || type === 'reference') && fields.kind) {
+      parts.push(String(fields.kind))
+    }
+    return parts.join(' · ')
+  }, [type, fields])
+
   return (
     <article className={`proposal-card t-${effectiveType}`}>
       {/* ── Header: the proposed action in plain language ── */}
@@ -444,7 +453,17 @@ export function ProposalCard({
         <span className="pc-conf" title="Weaver confidence">{confPct}%</span>
       </div>
 
-      {summary && !revising && <p className="pc-summary">{summary}</p>}
+      {/* Read view (when not editing): summary, type-specific facets, evidence. */}
+      {!editing && summary && <p className="pc-summary">{summary}</p>}
+      {!editing && willCreate && (fieldSummary || aliases.length > 0) && (
+        <p className="pc-facets">
+          <span className="pc-facets-path">{spec.entity.path}</span>
+          {fieldSummary && <span className="pc-facet">{fieldSummary}</span>}
+          {aliases.length > 0 && (
+            <span className="pc-facet pc-facet-aliases">aka {aliases.join(', ')}</span>
+          )}
+        </p>
+      )}
 
       {evidence && (
         <p className="pc-why">
@@ -453,7 +472,7 @@ export function ProposalCard({
       )}
 
       {/* ── Capability A: duplicate detection — surfaced prominently ── */}
-      {duplicate && !revising && (
+      {duplicate && !editing && (
         <div className="pc-dup">
           <div className="pc-dup-text">
             Looks like <strong>{duplicate.path}</strong> — link &amp; add “{baseName}” as alias?
@@ -481,46 +500,155 @@ export function ProposalCard({
             ))}
           </ul>
           <span className="pc-splitlog-hint">
-            Still pending — revise the name &amp; pick the remaining captures, or Accept &amp; close.
+            Still pending — edit the entity &amp; pick the remaining captures, or Accept &amp; close.
           </span>
         </div>
       )}
 
-      {/* ── Revise: edit name / type / summary / aliases, or re-target ── */}
-      {revising && (
-        <div className="pc-revise">
-          <p className="field-label">Correct the entity</p>
-          <div className="inline-create">
-            <select value={type} onChange={(e) => setType(e.target.value as EntityType)} disabled={!!target}>
-              {ENTITY_TYPES.map((t) => (
-                <option key={t} value={t}>{t} → {TYPE_FOLDER[t]}/…</option>
-              ))}
-            </select>
-            <input
-              placeholder="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={!!target}
-            />
-            <input
-              placeholder="One-line summary"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              disabled={!!target}
-            />
-            {/* Capability B: aliases for a newly-created entity. */}
-            <input
-              placeholder="Aliases (comma-separated, e.g. Sandhiji, Ji)"
-              value={aliasesText}
-              onChange={(e) => setAliasesText(e.target.value)}
-              disabled={!!target}
-            />
-          </div>
+      {/* ── The friendly edit form (NO raw JSON) ── */}
+      {editing && (
+        <div className="pc-form">
+          {!target ? (
+            <>
+              <div className="pc-field">
+                <label className="field-label">Name</label>
+                <input
+                  className="search-box"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Entity name"
+                />
+                <span className="pc-field-hint">Saves to {spec.entity.path}</span>
+              </div>
 
-          <p className="field-label" style={{ marginTop: 14 }}>
-            …or link these captures to an existing entity instead
-          </p>
-          {target ? (
+              <div className="pc-field">
+                <label className="field-label">Type</label>
+                <select
+                  className="pc-select"
+                  value={type}
+                  onChange={(e) => setType(e.target.value as EntityType)}
+                >
+                  {ENTITY_TYPES.map((t) => (
+                    <option key={t} value={t}>{t} → {TYPE_FOLDER[t]}/…</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pc-field">
+                <label className="field-label">Summary</label>
+                <textarea
+                  className="pc-textarea"
+                  value={summary}
+                  onChange={(e) => setSummary(e.target.value)}
+                  placeholder="One-line summary"
+                  rows={3}
+                />
+              </div>
+
+              <div className="pc-field">
+                <label className="field-label">Aliases</label>
+                <div className="pc-chips">
+                  {aliases.map((a) => (
+                    <span key={a} className="pc-chip">
+                      {a}
+                      <button
+                        type="button"
+                        className="pc-chip-x"
+                        onClick={() => removeAliasChip(a)}
+                        aria-label={`Remove ${a}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    className="pc-chip-input"
+                    value={aliasDraft}
+                    onChange={(e) => setAliasDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault()
+                        addAliasChip()
+                      } else if (e.key === 'Backspace' && !aliasDraft && aliases.length) {
+                        removeAliasChip(aliases[aliases.length - 1])
+                      }
+                    }}
+                    onBlur={addAliasChip}
+                    placeholder={aliases.length ? 'Add another…' : 'Add an alias…'}
+                  />
+                </div>
+              </div>
+
+              {/* ── Type-specific fields ── */}
+              {type === 'project' && (
+                <div className="pc-field-row">
+                  <div className="pc-field">
+                    <label className="field-label">Status</label>
+                    <select
+                      className="pc-select"
+                      value={String(fields.status ?? 'active')}
+                      onChange={(e) => setField('status', e.target.value)}
+                    >
+                      {PROJECT_STATUSES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pc-field">
+                    <label className="field-label">Role</label>
+                    <input
+                      className="search-box"
+                      value={String(fields.role ?? '')}
+                      onChange={(e) => setField('role', e.target.value)}
+                      placeholder="Your role (optional)"
+                    />
+                  </div>
+                </div>
+              )}
+              {type === 'person' && (
+                <div className="pc-field">
+                  <label className="field-label">Relation</label>
+                  <select
+                    className="pc-select"
+                    value={String(fields.relation ?? 'friend')}
+                    onChange={(e) => setField('relation', e.target.value)}
+                  >
+                    {PERSON_RELATIONS.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {type === 'place' && (
+                <div className="pc-field">
+                  <label className="field-label">Kind</label>
+                  <select
+                    className="pc-select"
+                    value={String(fields.kind ?? 'venue')}
+                    onChange={(e) => setField('kind', e.target.value)}
+                  >
+                    {PLACE_KINDS.map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {type === 'reference' && (
+                <div className="pc-field">
+                  <label className="field-label">Kind</label>
+                  <select
+                    className="pc-select"
+                    value={String(fields.kind ?? 'book')}
+                    onChange={(e) => setField('kind', e.target.value)}
+                  >
+                    {REFERENCE_KINDS.map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
+          ) : (
             <div className="pc-target">
               <span className={`chip t-${entityTypeOf(target) ?? ''}`}>
                 <span className="dot" />
@@ -529,7 +657,6 @@ export function ProposalCard({
               <button className="text-toggle" onClick={() => { setTarget(null); setEntityQuery('') }}>
                 clear · create new instead
               </button>
-              {/* Capability B: add the proposal's original name as an alias on retarget. */}
               {baseName.trim() && (
                 <label className="pc-alias-check">
                   <input
@@ -541,8 +668,12 @@ export function ProposalCard({
                 </label>
               )}
             </div>
-          ) : (
-            <>
+          )}
+
+          {/* ── Re-target to an existing entity ── */}
+          {!target && (
+            <div className="pc-field" style={{ marginTop: 4 }}>
+              <label className="field-label">…or link these captures to an existing entity</label>
               <input
                 className="search-box"
                 placeholder="Search existing — name, summary, or alias…"
@@ -566,7 +697,7 @@ export function ProposalCard({
                   ))}
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       )}
@@ -673,10 +804,10 @@ export function ProposalCard({
         </button>
         <button
           className="btn-ghost btn"
-          onClick={() => setRevising((v) => !v)}
+          onClick={() => setEditing((v) => !v)}
           disabled={busy}
         >
-          {revising ? 'Done revising' : 'Revise'}
+          {editing ? 'Done editing' : 'Edit'}
         </button>
         {/* Capability C: secondary action — link a subset, keep the card open. */}
         <button
@@ -700,10 +831,8 @@ export function ProposalCard({
 }
 
 // One capture row's text: the sentence-ish slice where the proposed entity is
-// actually named, with the matched term highlighted — so the reviewer can see
-// *why* this capture supports the entity (e.g. "…my friend Rachel…" vs a bare
-// generic preview). Falls back to a plain preview (no highlight) when content
-// hasn't loaded yet or contains no literal mention of the name/aliases.
+// actually named, with the matched term highlighted. Falls back to a plain
+// preview when content hasn't loaded or contains no literal mention.
 function CaptureMention({
   note,
   content,
@@ -726,9 +855,6 @@ function CaptureMention({
       </span>
     )
   }
-  // Fallback: the existing generic preview, flagged so it's clear it's not a
-  // located mention (content may be missing, or the capture doesn't name the
-  // entity literally — rare, but still a valid support via embedding/topic).
   const text = previewText(note) || note.preview?.trim() || entityName(note)
   return (
     <span className="pc-cap-preview pc-cap-preview-fallback" title="No literal name match — showing a preview">
