@@ -4,6 +4,7 @@ import {
   createEntity,
   dedupeAliases,
   entityPath,
+  fetchCapturesByIds,
   linkCapture,
   resolveProposal,
   searchCaptures,
@@ -93,7 +94,21 @@ export function ProposalCard({
   const [entityQuery, setEntityQuery] = useState('')
 
   // ── Supporting captures (the evidence) ──
-  const [searchTerm, setSearchTerm] = useState(baseName)
+  // Curated path: when the proposal carries metadata.capture_ids, THOSE captures
+  // are the supporting set (pre-checked) — not a name search. The search box then
+  // becomes an "add more captures" affordance that merges extra captures in.
+  // Fallback path (older proposals, no capture_ids): search by entity_name as
+  // before, with the search box replacing the list on each query.
+  const curatedIds = useMemo<string[]>(() => {
+    const raw = meta.capture_ids
+    if (!Array.isArray(raw)) return []
+    return raw.map((id) => String(id)).filter((id) => id.trim() !== '')
+  }, [meta.capture_ids])
+  const hasCurated = curatedIds.length > 0
+
+  // In curated mode the search box starts empty (we're NOT name-searching);
+  // in fallback mode it seeds with the entity name (the legacy behavior).
+  const [searchTerm, setSearchTerm] = useState(hasCurated ? '' : baseName)
   const [rows, setRows] = useState<CaptureRow[]>([])
   const [loadingCaps, setLoadingCaps] = useState(true)
   const [capError, setCapError] = useState<string | null>(null)
@@ -109,15 +124,46 @@ export function ProposalCard({
   const [splitLog, setSplitLog] = useState<string[]>([])
   const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set())
 
-  // Load supporting captures for the current search term (debounced). All state
-  // updates happen inside the (async) timeout so the effect body stays free of
-  // synchronous setState.
+  // Curated path: on mount, load exactly the captures in metadata.capture_ids,
+  // pre-checked (except any already linked in a prior split pass). This is the
+  // default supporting set — NOT a name search. Runs once for curated proposals;
+  // fallback proposals skip it and rely on the search effect below.
+  useEffect(() => {
+    if (!hasCurated) return
+    let cancelled = false
+    // All setState happens inside the async block (loadingCaps already starts
+    // true), so the effect body stays free of synchronous setState.
+    ;(async () => {
+      try {
+        const found = await fetchCapturesByIds(curatedIds)
+        if (cancelled) return
+        setRows(found.map((n) => ({ note: n, selected: !linkedIds.has(n.id) })))
+      } catch (e) {
+        if (cancelled) return
+        setCapError(e instanceof Error ? e.message : String(e))
+      } finally {
+        if (!cancelled) setLoadingCaps(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Mount-only for this proposal: curatedIds/hasCurated are derived from the
+    // immutable proposal; linkedIds omitted so a split pass doesn't refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Search effect. In FALLBACK mode the term seeds with the entity name and the
+  // results REPLACE the list (legacy behavior). In CURATED mode the term starts
+  // empty and search results are MERGED in as additional captures — the curated
+  // set is never wiped — so the box acts as an "add more captures" affordance.
   useEffect(() => {
     window.clearTimeout(debounce.current)
     const term = searchTerm.trim()
     debounce.current = window.setTimeout(async () => {
       if (!term) {
-        setRows([])
+        // Curated: keep the curated rows in place; only the fallback list clears.
+        if (!hasCurated) setRows([])
         setLoadingCaps(false)
         return
       }
@@ -125,11 +171,23 @@ export function ProposalCard({
       setCapError(null)
       try {
         const found = await searchCaptures(term)
-        // default: all on, EXCEPT captures already linked in a prior split pass.
-        setRows(found.map((n) => ({ note: n, selected: !linkedIds.has(n.id) })))
+        if (hasCurated) {
+          // Merge: add any captures not already present (curated or previously
+          // added), pre-checked, without disturbing existing rows/selection.
+          setRows((prev) => {
+            const have = new Set(prev.map((r) => r.note.id))
+            const additions = found
+              .filter((n) => !have.has(n.id))
+              .map((n) => ({ note: n, selected: !linkedIds.has(n.id) }))
+            return additions.length ? [...prev, ...additions] : prev
+          })
+        } else {
+          // default: all on, EXCEPT captures already linked in a prior split pass.
+          setRows(found.map((n) => ({ note: n, selected: !linkedIds.has(n.id) })))
+        }
       } catch (e) {
         setCapError(e instanceof Error ? e.message : String(e))
-        setRows([])
+        if (!hasCurated) setRows([])
       } finally {
         setLoadingCaps(false)
       }
@@ -472,7 +530,8 @@ export function ProposalCard({
       <div className="pc-captures">
         <div className="pc-cap-head">
           <span className="field-label" style={{ margin: 0 }}>
-            Supporting captures — this will link {selectedCount} of {rows.length}
+            {hasCurated ? 'Curated captures' : 'Supporting captures'} — this will link{' '}
+            {selectedCount} of {rows.length}
           </span>
           {rows.length > 0 && (
             <span className="pc-cap-actions">
@@ -483,20 +542,36 @@ export function ProposalCard({
           )}
         </div>
 
+        {hasCurated && (
+          <p className="pc-cap-curated-note">
+            The judge confirmed these {curatedIds.length} capture
+            {curatedIds.length === 1 ? '' : 's'} for this entity — pre-selected. Search below to
+            add more.
+          </p>
+        )}
+
         <div className="pc-cap-search">
-          <span className="pc-cap-search-label">Search</span>
+          <span className="pc-cap-search-label">{hasCurated ? 'Add' : 'Search'}</span>
           <input
             className="search-box"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by any term — name, alias, or topic…"
+            placeholder={
+              hasCurated
+                ? 'Add more captures — search by name, alias, or topic…'
+                : 'Search by any term — name, alias, or topic…'
+            }
           />
         </div>
 
         {loadingCaps && <div className="pc-cap-loading">Finding captures…</div>}
         {capError && <div className="config-err">{capError}</div>}
         {!loadingCaps && rows.length === 0 && !capError && (
-          <div className="pc-cap-empty">No captures match “{searchTerm.trim()}”.</div>
+          <div className="pc-cap-empty">
+            {searchTerm.trim()
+              ? `No captures match “${searchTerm.trim()}”.`
+              : 'No captures to show — search above to add some.'}
+          </div>
         )}
 
         <div className="pc-cap-list">

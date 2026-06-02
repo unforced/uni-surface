@@ -242,6 +242,10 @@ export interface ProposalMeta {
   evidence?: string
   run?: string
   capture_id?: string
+  // Curated captures the AI judge confirmed refer to this entity (false
+  // positives dropped; disambiguated). When present + non-empty, these are the
+  // supporting captures — not a name search.
+  capture_ids?: string[]
   target_path?: string
   [key: string]: unknown
 }
@@ -289,6 +293,19 @@ export function searchCaptures(term: string): Promise<Note[]> {
   p.set('include_content', 'false')
   p.set('limit', '50')
   return request<Note[]>('GET', `/notes?${p.toString()}`)
+}
+
+// Fetch specific captures by id — the curated set a proposal's
+// `metadata.capture_ids` points at. Each id is fetched via GET /api/notes/{id}.
+// Missing/failed ids are skipped (a curated id may have been deleted) so the
+// card still loads with whatever resolves. Order follows the input id list.
+export async function fetchCapturesByIds(ids: string[]): Promise<Note[]> {
+  const settled = await Promise.allSettled(ids.map((id) => getNote(id)))
+  const out: Note[] = []
+  for (const r of settled) {
+    if (r.status === 'fulfilled') out.push(r.value)
+  }
+  return out
 }
 
 // Create the entity note at `<Root>/<name>`; it inherits the `entity` parent
