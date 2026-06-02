@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Vault</title>
+    <!--
+      GitHub Pages SPA fallback. Pages serves this for any unknown deep link
+      (e.g. /my-vault-ui/entity/Projects%2FParachute). We stash the requested
+      path and bounce to the app root, which restores it via the router.
+    -->
+    <script>
+      sessionStorage.setItem('pv.redirect', location.pathname + location.search + location.hash)
+      // Redirect to the app base. Keep this in sync with vite `base`.
+      var seg = location.pathname.split('/').filter(Boolean)[0]
+      location.replace('/' + (seg ? seg + '/' : ''))
+    </script>
+  </head>
+  <body></body>
+</html>
