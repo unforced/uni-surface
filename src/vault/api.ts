@@ -205,6 +205,101 @@ export function deleteNote(id: string): Promise<void> {
   return request<void>('DELETE', `/notes/${encodeURIComponent(id)}`)
 }
 
+// ---- Proposals (deterministic review surface — NO AI) ----
+//
+// Proposals are notes tagged `proposal` carrying a Weaver suggestion in their
+// metadata. Approving one runs plain vault calls: create the entity, link the
+// chosen captures, resolve the proposal. These helpers are small + typed and
+// are reused directly by the Proposals UI.
+
+import type { EntityType } from './types'
+
+// entity_type → path root folder (matches the vault's layout + WeaveEditor).
+export const ENTITY_FOLDER: Record<EntityType, string> = {
+  project: 'Projects',
+  person: 'People',
+  place: 'Places',
+  thread: 'Threads',
+  practice: 'Practices',
+  tool: 'Tools',
+  reference: 'References',
+  organization: 'Organizations',
+  seed: 'Seeds',
+}
+
+export type ProposalStatus = 'pending' | 'approved' | 'rejected'
+
+// The Weaver metadata carried on a `proposal` note (see data model). Kept as a
+// standalone shape (not extending NoteMetadata, whose `status` is narrower).
+export interface ProposalMeta {
+  kind?: 'entity' | 'link'
+  status?: ProposalStatus
+  entity_type?: EntityType
+  entity_name?: string
+  entity_summary?: string
+  relationship?: string
+  confidence?: number
+  evidence?: string
+  run?: string
+  capture_id?: string
+  target_path?: string
+  [key: string]: unknown
+}
+
+// Build the target path for an entity of the given type + name.
+export function entityPath(type: EntityType, name: string): string {
+  return `${ENTITY_FOLDER[type]}/${name.trim()}`
+}
+
+// The pending-proposals query (spec-exact): tag=proposal, status==pending.
+export function listPendingProposals(): Promise<Note[]> {
+  const meta = encodeURIComponent(JSON.stringify({ status: { eq: 'pending' } }))
+  return request<Note[]>(
+    'GET',
+    `/notes?tag=proposal&metadata=${meta}&include_metadata=true&limit=200`,
+  )
+}
+
+// Captures whose text mentions `term` — the supporting evidence for a proposal.
+export function searchCaptures(term: string): Promise<Note[]> {
+  const p = new URLSearchParams()
+  p.set('tag', 'capture')
+  p.set('search', term)
+  p.set('include_content', 'false')
+  p.set('limit', '50')
+  return request<Note[]>('GET', `/notes?${p.toString()}`)
+}
+
+// Create the entity note at `<Root>/<name>`; it inherits the `entity` parent
+// automatically via its type tag.
+export function createEntity(
+  type: EntityType,
+  name: string,
+  summary: string,
+): Promise<Note> {
+  const path = entityPath(type, name)
+  return createNote({
+    path,
+    content: `# ${name.trim()}\n${summary.trim() ? `\n${summary.trim()}\n` : ''}`,
+    tags: [type],
+    metadata: summary.trim() ? { summary: summary.trim() } : {},
+  })
+}
+
+// Link one capture to an entity path with the given relationship.
+export function linkCapture(
+  captureId: string,
+  targetPath: string,
+  relationship: string,
+): Promise<Note> {
+  return patchNote(captureId, { links: { add: [{ target: targetPath, relationship }] } })
+}
+
+// Resolve a proposal — keep it as an audit record (don't delete).
+export function resolveProposal(id: string, status: ProposalStatus): Promise<Note> {
+  return patchNote(id, { metadata: { status } })
+}
+
 // ---- Attachments & storage ----
 
 // An attachment row as returned by GET /api/notes/{id}?include_attachments=true

@@ -151,6 +151,15 @@ button { font-family: inherit; cursor: pointer; }
 .nav a:hover { background: var(--surface-2); color: var(--ink); }
 .nav a.active { background: var(--terracotta-wash); color: var(--clay); }
 
+.nav-proposals { display: inline-flex; align-items: center; gap: 7px; }
+.nav-badge {
+  background: var(--clay); color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
 .topbar-spacer { flex: 1; }
 
 .icon-btn {
@@ -903,3 +912,144 @@ button { font-family: inherit; cursor: pointer; }
   font-family: var(--serif); font-size: 28px; font-weight: 600;
   color: var(--ink); font-variant-numeric: tabular-nums; margin: 6px 0 0;
 }
+
+/* ───────────────────────────────────────────────────────────
+   Proposals — Weaver review surface
+   ─────────────────────────────────────────────────────────── */
+
+/* Today: the proposals review tray (sibling to the to-weave tray) */
+.proposals-tray {
+  display: block;
+  border: 1px solid var(--sage-soft);
+  border-radius: var(--r-card, 18px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sage) 8%, var(--surface)), var(--surface));
+  padding: 20px 22px;
+  margin: 26px 0 18px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.proposals-tray:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+  border-color: var(--sage);
+}
+.proposals-tray-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.proposals-tray-head h2 { font-size: 21px; color: var(--sage); margin: 0; }
+.proposals-tray .pt-glyph { color: var(--sage); font-size: 18px; }
+
+/* Proposals page */
+.proposals-count { color: var(--ink-soft); font-size: 14px; margin: 0 0 22px; }
+.proposals-count strong { color: var(--clay); font-weight: 600; }
+
+.proposal-group { margin-bottom: 30px; }
+.proposal-group-head {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 15px; text-transform: capitalize; letter-spacing: 0.01em;
+  color: var(--ink-soft); margin: 0 0 14px;
+  border-bottom: 1px solid var(--line); padding-bottom: 8px;
+}
+.proposal-group-head .pg-swatch {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--tc, var(--clay)); flex: none;
+}
+.proposal-group-head .count {
+  margin-left: auto; font-size: 12px; color: var(--ink-faint);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-pill); padding: 2px 9px;
+}
+
+.proposal-list { display: flex; flex-direction: column; gap: 16px; }
+
+.proposal-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--tc, var(--clay));
+  border-radius: var(--r-card, 16px);
+  background: var(--surface);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-soft);
+}
+
+.pc-head { display: flex; align-items: center; gap: 10px; }
+.pc-head .pc-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--tc, var(--clay)); flex: none;
+}
+.pc-title { font-size: 16.5px; color: var(--ink); flex: 1; min-width: 0; }
+.pc-title strong { font-weight: 600; }
+.pc-existing { color: var(--ink-faint); font-size: 13px; font-weight: 400; }
+.pc-conf {
+  font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--sage); font-weight: 600;
+  background: var(--moss-wash); border-radius: var(--r-pill);
+  padding: 3px 9px; flex: none;
+}
+
+.pc-summary { color: var(--ink); font-size: 14.5px; line-height: 1.55; margin: 12px 0 0; }
+.pc-why {
+  color: var(--ink-soft); font-size: 13.5px; line-height: 1.55;
+  margin: 10px 0 0; padding: 10px 13px;
+  background: var(--surface-2); border-radius: 12px;
+  border-left: 2px solid var(--sage-soft);
+}
+.pc-why-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--sage); font-weight: 600; margin-right: 6px;
+}
+
+.pc-revise {
+  margin-top: 16px; padding: 16px;
+  background: var(--surface-2); border: 1px dashed var(--line);
+  border-radius: 14px;
+}
+.pc-target { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+.pc-result-list { max-height: 220px; }
+
+.pc-rel { margin-top: 16px; }
+.pc-rel-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-faint); font-weight: 600;
+}
+.pc-rel .rel-row { margin-top: 8px; }
+
+.pc-captures { margin-top: 18px; }
+.pc-cap-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pc-cap-actions { font-size: 12.5px; color: var(--ink-faint); display: inline-flex; gap: 7px; align-items: center; }
+.pc-cap-search { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.pc-cap-search-label { font-size: 12.5px; color: var(--ink-faint); flex: none; }
+.pc-cap-search .search-box { margin: 0; }
+.pc-cap-loading, .pc-cap-empty { font-size: 13px; color: var(--ink-faint); padding: 8px 0; }
+
+.pc-cap-list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 240px; overflow-y: auto;
+  margin-top: 4px;
+}
+.pc-cap-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 11px; border-radius: 11px;
+  border: 1px solid transparent; cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.pc-cap-row:hover { background: var(--surface-2); }
+.pc-cap-row.off { opacity: 0.5; }
+.pc-cap-row input[type='checkbox'] {
+  margin-top: 2px; width: 16px; height: 16px; flex: none;
+  accent-color: var(--clay); cursor: pointer;
+}
+.pc-cap-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pc-cap-preview {
+  font-size: 13.5px; color: var(--ink); line-height: 1.45;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.pc-cap-date { font-size: 11.5px; color: var(--ink-faint); }
+
+.pc-progress {
+  margin-top: 14px; font-size: 13px; color: var(--sage); font-weight: 500;
+}
+
+.pc-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+.pc-actions .pc-skip { color: var(--ink-faint); }
+.pc-actions .pc-skip:hover { color: var(--clay); }
+.pc-accept { white-space: nowrap; }

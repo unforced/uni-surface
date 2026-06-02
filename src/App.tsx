@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearConfig, hasConfig, isOAuth } from './vault/config'
+import { listPendingProposals } from './vault/api'
+import { PROPOSAL_RESOLVED_EVENT } from './routes/Proposals'
 import { EntityIndexProvider } from './vault/EntityIndex'
 import { useTheme } from './components/useTheme'
 import { SearchPalette } from './components/SearchPalette'
@@ -38,8 +40,26 @@ function Shell() {
   // After a capture lands, offer to weave it (links) right away.
   const [weaveNew, setWeaveNew] = useState<Note | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [proposalCount, setProposalCount] = useState<number | null>(null)
   const nav = useNavigate()
   const loc = useLocation()
+
+  // Live count of pending Weaver proposals for the nav badge. Refresh on mount
+  // and whenever a proposal is resolved anywhere in the app.
+  useEffect(() => {
+    let live = true
+    const load = () => {
+      listPendingProposals()
+        .then((ps) => { if (live) setProposalCount(ps.length) })
+        .catch(() => { if (live) setProposalCount(null) })
+    }
+    load()
+    window.addEventListener(PROPOSAL_RESOLVED_EVENT, load)
+    return () => {
+      live = false
+      window.removeEventListener(PROPOSAL_RESOLVED_EVENT, load)
+    }
+  }, [])
 
   function flash(msg: string) {
     setToast(msg)
@@ -96,6 +116,10 @@ function Shell() {
           </Link>
           <nav className="nav">
             <NavLink to="/" end>Today</NavLink>
+            <NavLink to="/proposals" className={({ isActive }) => (isActive ? 'active nav-proposals' : 'nav-proposals')}>
+              Proposals
+              {proposalCount ? <span className="nav-badge">{proposalCount}</span> : null}
+            </NavLink>
             <NavLink to="/browse">Browse</NavLink>
           </nav>
           <div className="topbar-spacer" />

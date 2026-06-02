@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listNotes } from '../vault/api'
+import { listNotes, listPendingProposals } from '../vault/api'
+import { PROPOSAL_RESOLVED_EVENT } from './Proposals'
 import { CAPTURE_CREATED_EVENT, openCapture } from '../App'
 import { PlusIcon } from '../components/icons'
 import type { Note } from '../vault/types'
@@ -66,6 +67,9 @@ export function Today() {
     [],
   )
 
+  // Pending Weaver proposals — the second review queue, sitting beside to-weave.
+  const proposals = useAsync(() => listPendingProposals(), [])
+
   // Refresh the spine + to-weave tray when a capture lands anywhere in the app.
   useEffect(() => {
     const onCreated = () => {
@@ -75,6 +79,14 @@ export function Today() {
     window.addEventListener(CAPTURE_CREATED_EVENT, onCreated)
     return () => window.removeEventListener(CAPTURE_CREATED_EVENT, onCreated)
     // reload fns are stable from useAsync; intentionally run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Refresh the proposals count when one is resolved on the Proposals view.
+  useEffect(() => {
+    const onResolved = () => proposals.reload()
+    window.addEventListener(PROPOSAL_RESOLVED_EVENT, onResolved)
+    return () => window.removeEventListener(PROPOSAL_RESOLVED_EVENT, onResolved)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -183,6 +195,21 @@ export function Today() {
               </div>
             </div>
           ))}
+
+          {/* ── Review queues: proposals + to-weave sit together ── */}
+          {(proposals.data?.length ?? 0) > 0 && (
+            <Link to="/proposals" className="proposals-tray">
+              <div className="proposals-tray-head">
+                <span className="pt-glyph">𓂃</span>
+                <h2>Weaver proposals</h2>
+                <span className="weave-badge">{proposals.data!.length}</span>
+              </div>
+              <p className="weave-sub" style={{ marginBottom: 0 }}>
+                {proposals.data!.length} suggested entit{proposals.data!.length === 1 ? 'y is' : 'ies are'} waiting for
+                your review — accept, revise, or skip each one. Nothing is created until you say so.
+              </p>
+            </Link>
+          )}
 
           {/* ── To-weave tray (the one loud thing) ── */}
           <div className="weave-tray">
