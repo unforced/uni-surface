@@ -251,13 +251,34 @@ export function entityPath(type: EntityType, name: string): string {
   return `${ENTITY_FOLDER[type]}/${name.trim()}`
 }
 
-// The pending-proposals query (spec-exact): tag=proposal, status==pending.
-export function listPendingProposals(): Promise<Note[]> {
+// The pending-proposals query: tag=proposal, status==pending.
+// NOTE: the metadata operator filter is sent for backends that honour it, but
+// the vault currently returns ALL proposals regardless of the freeform `status`
+// filter — so we ALSO filter client-side. This guarantees the review list only
+// ever shows pending proposals (resolved cards can never linger or reappear).
+export async function listPendingProposals(): Promise<Note[]> {
   const meta = encodeURIComponent(JSON.stringify({ status: { eq: 'pending' } }))
-  return request<Note[]>(
+  const all = await request<Note[]>(
     'GET',
     `/notes?tag=proposal&metadata=${meta}&include_metadata=true&limit=200`,
   )
+  return all.filter((p) => (p.metadata?.status ?? 'pending') === 'pending')
+}
+
+// Add a value to an entity's `metadata.aliases` (string array), de-duped
+// case-insensitively. Reads the live note first so we don't clobber existing
+// aliases, then PATCHes the merged list. No-op (returns the note) if the alias
+// already exists. `idOrPath` may be an entity id or its path.
+export async function addAlias(idOrPath: string, alias: string): Promise<Note> {
+  const value = alias.trim()
+  const note = await getNote(idOrPath)
+  const existing = Array.isArray(note.metadata?.aliases)
+    ? (note.metadata!.aliases as unknown[]).map((a) => String(a))
+    : []
+  if (!value) return note
+  if (existing.some((a) => a.toLowerCase() === value.toLowerCase())) return note
+  const aliases = [...existing, value]
+  return patchNote(note.id, { metadata: { aliases } })
 }
 
 // Captures whose text mentions `term` — the supporting evidence for a proposal.
@@ -271,19 +292,40 @@ export function searchCaptures(term: string): Promise<Note[]> {
 }
 
 // Create the entity note at `<Root>/<name>`; it inherits the `entity` parent
-// automatically via its type tag.
+// automatically via its type tag. `aliases` (optional) are written to
+// metadata.aliases so short forms (e.g. "Ji" → "Sandhiji Davis") resolve later.
 export function createEntity(
   type: EntityType,
   name: string,
   summary: string,
+  aliases: string[] = [],
 ): Promise<Note> {
   const path = entityPath(type, name)
+  const cleanAliases = dedupeAliases(aliases)
+  const metadata: NoteMetadata = {}
+  if (summary.trim()) metadata.summary = summary.trim()
+  if (cleanAliases.length) metadata.aliases = cleanAliases
   return createNote({
     path,
     content: `# ${name.trim()}\n${summary.trim() ? `\n${summary.trim()}\n` : ''}`,
     tags: [type],
-    metadata: summary.trim() ? { summary: summary.trim() } : {},
+    metadata,
   })
+}
+
+// Trim, drop empties, de-dupe (case-insensitive) an alias list.
+export function dedupeAliases(input: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of input) {
+    const v = raw.trim()
+    if (!v) continue
+    const k = v.toLowerCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(v)
+  }
+  return out
 }
 
 // Link one capture to an entity path with the given relationship.

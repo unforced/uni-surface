@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  addAlias,
   createEntity,
+  dedupeAliases,
   entityPath,
   linkCapture,
   resolveProposal,
@@ -9,7 +11,13 @@ import {
 import type { Note } from '../vault/types'
 import { ENTITY_TYPES, entityTypeOf, type EntityType } from '../vault/types'
 import { useEntityIndex } from '../vault/EntityIndex'
-import { entityName, formatDayHeading, dayKey } from '../vault/util'
+import {
+  entityName,
+  entityAliases,
+  findExistingEntity,
+  formatDayHeading,
+  dayKey,
+} from '../vault/util'
 import { LinkIcon, PlusIcon } from './icons'
 import {
   proposalEntityType,
@@ -52,9 +60,12 @@ interface CaptureRow {
 export function ProposalCard({
   proposal,
   onResolved,
+  onPartial,
 }: {
   proposal: Note
   onResolved: (id: string, msg: string) => void
+  // Capability C: report work done WITHOUT resolving (proposal stays pending).
+  onPartial: (id: string, msg: string) => void
 }) {
   const meta = proposal.metadata ?? {}
   const baseType = proposalEntityType(proposal)
@@ -72,6 +83,10 @@ export function ProposalCard({
   const [type, setType] = useState<EntityType>(baseType)
   const [summary, setSummary] = useState(baseSummary)
   const [relationship, setRelationship] = useState(baseRel)
+  // Capability B: editable aliases for "create new" (comma-separated input).
+  const [aliasesText, setAliasesText] = useState('')
+  // Capability B: when re-targeting, also add the original name as an alias.
+  const [addNameAsAlias, setAddNameAsAlias] = useState(true)
 
   // ── Re-target: link to an EXISTING entity instead of creating one ──
   const [target, setTarget] = useState<Note | null>(null) // chosen existing entity
@@ -89,6 +104,11 @@ export function ProposalCard({
   const [progress, setProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Capability C: a running log of split actions done while keeping the card open,
+  // plus the ids of captures already linked (so they don't get re-linked).
+  const [splitLog, setSplitLog] = useState<string[]>([])
+  const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set())
+
   // Load supporting captures for the current search term (debounced). All state
   // updates happen inside the (async) timeout so the effect body stays free of
   // synchronous setState.
@@ -105,8 +125,8 @@ export function ProposalCard({
       setCapError(null)
       try {
         const found = await searchCaptures(term)
-        // default: all on
-        setRows(found.map((n) => ({ note: n, selected: true })))
+        // default: all on, EXCEPT captures already linked in a prior split pass.
+        setRows(found.map((n) => ({ note: n, selected: !linkedIds.has(n.id) })))
       } catch (e) {
         setCapError(e instanceof Error ? e.message : String(e))
         setRows([])
@@ -115,6 +135,8 @@ export function ProposalCard({
       }
     }, term ? 250 : 0)
     return () => window.clearTimeout(debounce.current)
+    // linkedIds intentionally omitted: re-running on every link would refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm])
 
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows])
@@ -126,7 +148,8 @@ export function ProposalCard({
     setRows((rs) => rs.map((r) => ({ ...r, selected: on })))
   }
 
-  // Existing-entity picker results (reuse the in-memory entity index).
+  // Existing-entity picker results (reuse the in-memory entity index). Searches
+  // name, summary, AND aliases so the user can find by an alias (e.g. "Sandhiji").
   const entityResults = useMemo(() => {
     const q = entityQuery.trim().toLowerCase()
     if (!q) return [] as Note[]
@@ -134,10 +157,19 @@ export function ProposalCard({
       .filter((e) => {
         const n = entityName(e).toLowerCase()
         const s = String(e.metadata?.summary ?? '').toLowerCase()
-        return n.includes(q) || s.includes(q)
+        const al = entityAliases(e).some((a) => a.toLowerCase().includes(q))
+        return n.includes(q) || s.includes(q) || al
       })
       .slice(0, 8)
   }, [entityQuery, entities])
+
+  // Capability A: does this proposal's name likely already exist as an entity?
+  // Only surfaced when we're still in "create new" mode (no manual re-target yet).
+  const duplicate = useMemo(() => {
+    if (target) return null
+    const match = findExistingEntity(baseName, entities, baseType)
+    return (match as Note) ?? null
+  }, [baseName, baseType, entities, target])
 
   // The path the captures will be linked to: an existing target, or the
   // (possibly revised) name/type that Accept will create.
@@ -147,38 +179,103 @@ export function ProposalCard({
   const effectiveName = target ? entityName(target) : name.trim()
   const effectiveRel = relationship || suggestRel(effectiveType as EntityType)
 
-  // ── The deterministic execution: create (maybe) + link + resolve ──
+  // Shared worker: create (maybe) + link selected captures. Returns a summary
+  // string + the ids linked. Does NOT resolve the proposal — callers decide.
+  async function doCreateAndLink(): Promise<{ summary: string; linked: string[] }> {
+    const selected = rows.filter((r) => r.selected)
+    if (willCreate) {
+      if (!name.trim()) throw new Error('Give the entity a name before accepting.')
+      setProgress(`Creating ${type} “${name.trim()}”…`)
+      const aliasList = dedupeAliases(aliasesText.split(','))
+      await createEntity(type, name.trim(), summary, aliasList)
+      reloadEntities()
+    } else if (addNameAsAlias && baseName.trim()) {
+      // Capability B: re-targeting → optionally add the original name as an alias.
+      setProgress(`Adding “${baseName.trim()}” as an alias of ${effectiveName}…`)
+      await addAlias(target!.id, baseName.trim())
+      reloadEntities()
+    }
+
+    let linked = 0
+    const linkedNow: string[] = []
+    for (const r of selected) {
+      setProgress(`Linking captures… (${linked + 1}/${selected.length})`)
+      await linkCapture(r.note.id, effectivePath, effectiveRel)
+      linkedNow.push(r.note.id)
+      linked++
+    }
+    const where = willCreate ? `Created ${effectiveName}` : `Linked to ${effectiveName}`
+    return { summary: `${where}, linked ${linked} capture${linked === 1 ? '' : 's'}`, linked: linkedNow }
+  }
+
+  // ── Primary Accept: create (maybe) + link + RESOLVE the proposal ──
   async function accept() {
     setBusy(true)
     setError(null)
-    const selected = rows.filter((r) => r.selected)
     try {
-      // a. Create the entity (skipped when re-targeting an existing one).
-      if (willCreate) {
-        if (!name.trim()) {
-          setError('Give the entity a name before accepting.')
-          setBusy(false)
-          return
-        }
-        setProgress(`Creating ${type} “${name.trim()}”…`)
-        await createEntity(type, name.trim(), summary)
-        reloadEntities()
-      }
+      const { summary: msg } = await doCreateAndLink()
+      setProgress('Resolving proposal…')
+      await resolveProposal(proposal.id, 'approved')
+      onResolved(proposal.id, `${msg} 🌿`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setBusy(false)
+      setProgress(null)
+    }
+  }
 
-      // b. Link each SELECTED supporting capture.
+  // ── Capability A: one-click "this already exists" — link selected captures to
+  // the existing entity, add the proposal's name as an alias, resolve approved. ──
+  async function acceptAsDuplicate(existing: Note) {
+    setBusy(true)
+    setError(null)
+    try {
+      const selected = rows.filter((r) => r.selected)
+      const rel = suggestRel((entityTypeOf(existing) ?? 'reference') as EntityType)
+      setProgress(`Adding “${baseName}” as an alias of ${entityName(existing)}…`)
+      await addAlias(existing.id, baseName)
+      reloadEntities()
       let linked = 0
       for (const r of selected) {
         setProgress(`Linking captures… (${linked + 1}/${selected.length})`)
-        await linkCapture(r.note.id, effectivePath, effectiveRel)
+        await linkCapture(r.note.id, existing.path, rel)
         linked++
       }
-
-      // c. Resolve the proposal (audit record).
       setProgress('Resolving proposal…')
       await resolveProposal(proposal.id, 'approved')
+      onResolved(
+        proposal.id,
+        `Linked ${linked} capture${linked === 1 ? '' : 's'} to ${entityName(existing)} · added “${baseName}” as alias 🌿`,
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setBusy(false)
+      setProgress(null)
+    }
+  }
 
-      const where = willCreate ? `Created ${effectiveName}` : `Linked to ${effectiveName}`
-      onResolved(proposal.id, `${where}, linked ${linked} capture${linked === 1 ? '' : 's'} 🌿`)
+  // ── Capability C: "Link selected & keep open" — do the create/link for the
+  // SELECTED captures but DON'T resolve. Proposal stays pending so the user can
+  // revise the name (e.g. second Miranda), pick the remaining captures, repeat. ──
+  async function linkAndKeepOpen() {
+    setBusy(true)
+    setError(null)
+    try {
+      const { summary: msg, linked } = await doCreateAndLink()
+      // Remember what we linked so those rows stay off on the next search.
+      setLinkedIds((s) => {
+        const next = new Set(s)
+        linked.forEach((id) => next.add(id))
+        return next
+      })
+      // Reflect immediately: deselect the just-linked rows.
+      setRows((rs) =>
+        rs.map((r) => (linked.includes(r.note.id) ? { ...r, selected: false } : r)),
+      )
+      setSplitLog((l) => [...l, msg])
+      setProgress(null)
+      setBusy(false)
+      onPartial(proposal.id, `${msg} — still open to split further`)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setBusy(false)
@@ -199,9 +296,14 @@ export function ProposalCard({
   }
 
   const confPct = Math.round(confidence * 100)
-  const acceptLabel = willCreate
-    ? `Accept · create + link ${selectedCount}`
-    : `Accept · link ${selectedCount} to ${effectiveName}`
+  const hasSplit = splitLog.length > 0
+  const acceptLabel = hasSplit
+    ? selectedCount > 0
+      ? `Accept & close · ${willCreate ? 'create + link' : `link ${selectedCount}`}`
+      : 'Accept & close'
+    : willCreate
+      ? `Accept · create + link ${selectedCount}`
+      : `Accept · link ${selectedCount} to ${effectiveName}`
 
   return (
     <article className={`proposal-card t-${effectiveType}`}>
@@ -219,6 +321,7 @@ export function ProposalCard({
             </>
           )}
         </div>
+        <span className="pc-type-tag">{effectiveType}</span>
         <span className="pc-conf" title="Weaver confidence">{confPct}%</span>
       </div>
 
@@ -230,7 +333,41 @@ export function ProposalCard({
         </p>
       )}
 
-      {/* ── Revise: edit name / type / summary, or re-target ── */}
+      {/* ── Capability A: duplicate detection — surfaced prominently ── */}
+      {duplicate && !revising && (
+        <div className="pc-dup">
+          <div className="pc-dup-text">
+            Looks like <strong>{duplicate.path}</strong> — link &amp; add “{baseName}” as alias?
+          </div>
+          <button
+            className="btn pc-dup-btn"
+            onClick={() => acceptAsDuplicate(duplicate)}
+            disabled={busy || loadingCaps}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <LinkIcon />
+              Link to {entityName(duplicate)} &amp; add alias
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Capability C: log of split passes done so far ── */}
+      {hasSplit && (
+        <div className="pc-splitlog">
+          <span className="pc-splitlog-label">Done so far</span>
+          <ul>
+            {splitLog.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+          <span className="pc-splitlog-hint">
+            Still pending — revise the name &amp; pick the remaining captures, or Accept &amp; close.
+          </span>
+        </div>
+      )}
+
+      {/* ── Revise: edit name / type / summary / aliases, or re-target ── */}
       {revising && (
         <div className="pc-revise">
           <p className="field-label">Correct the entity</p>
@@ -252,6 +389,13 @@ export function ProposalCard({
               onChange={(e) => setSummary(e.target.value)}
               disabled={!!target}
             />
+            {/* Capability B: aliases for a newly-created entity. */}
+            <input
+              placeholder="Aliases (comma-separated, e.g. Sandhiji, Ji)"
+              value={aliasesText}
+              onChange={(e) => setAliasesText(e.target.value)}
+              disabled={!!target}
+            />
           </div>
 
           <p className="field-label" style={{ marginTop: 14 }}>
@@ -266,12 +410,23 @@ export function ProposalCard({
               <button className="text-toggle" onClick={() => { setTarget(null); setEntityQuery('') }}>
                 clear · create new instead
               </button>
+              {/* Capability B: add the proposal's original name as an alias on retarget. */}
+              {baseName.trim() && (
+                <label className="pc-alias-check">
+                  <input
+                    type="checkbox"
+                    checked={addNameAsAlias}
+                    onChange={(e) => setAddNameAsAlias(e.target.checked)}
+                  />
+                  also add “{baseName}” as an alias
+                </label>
+              )}
             </div>
           ) : (
             <>
               <input
                 className="search-box"
-                placeholder="Search existing projects, people, threads…"
+                placeholder="Search existing — name, summary, or alias…"
                 value={entityQuery}
                 onChange={(e) => setEntityQuery(e.target.value)}
               />
@@ -334,7 +489,7 @@ export function ProposalCard({
             className="search-box"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Narrow the term if the wrong ones match…"
+            placeholder="Search by any term — name, alias, or topic…"
           />
         </div>
 
@@ -346,7 +501,7 @@ export function ProposalCard({
 
         <div className="pc-cap-list">
           {rows.map((r) => (
-            <label key={r.note.id} className={`pc-cap-row ${r.selected ? 'on' : 'off'}`}>
+            <label key={r.note.id} className={`pc-cap-row ${r.selected ? 'on' : 'off'} ${linkedIds.has(r.note.id) ? 'linked' : ''}`}>
               <input
                 type="checkbox"
                 checked={r.selected}
@@ -354,7 +509,10 @@ export function ProposalCard({
               />
               <span className="pc-cap-text">
                 <span className="pc-cap-preview">{r.note.preview?.trim() || entityName(r.note)}</span>
-                <span className="pc-cap-date">{formatDayHeading(dayKey(r.note.createdAt))}</span>
+                <span className="pc-cap-date">
+                  {formatDayHeading(dayKey(r.note.createdAt))}
+                  {linkedIds.has(r.note.id) && <span className="pc-cap-linked"> · linked</span>}
+                </span>
               </span>
             </label>
           ))}
@@ -379,6 +537,15 @@ export function ProposalCard({
           disabled={busy}
         >
           {revising ? 'Done revising' : 'Revise'}
+        </button>
+        {/* Capability C: secondary action — link a subset, keep the card open. */}
+        <button
+          className="btn-ghost btn pc-keepopen"
+          onClick={linkAndKeepOpen}
+          disabled={busy || loadingCaps || selectedCount === 0}
+          title="Link the selected captures now but leave this proposal open to split into another entity"
+        >
+          Link selected &amp; keep open
         </button>
         <div className="spacer" />
         <button className="btn pc-accept" onClick={accept} disabled={busy || loadingCaps}>

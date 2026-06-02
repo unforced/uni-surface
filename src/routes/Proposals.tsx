@@ -48,8 +48,25 @@ export function Proposals() {
     window.dispatchEvent(new CustomEvent(PROPOSAL_RESOLVED_EVENT, { detail: id }))
   }
 
+  // Capability C: work was done (captures linked / entity created) but the
+  // proposal is INTENTIONALLY left pending so the user can split it further.
+  // Flash a note; do NOT remove or re-fetch (that would remount the card and
+  // wipe its in-progress split state).
+  function onPartial(_id: string, msg: string) {
+    flash(msg)
+  }
+
+  // Belt-and-suspenders: the list must ONLY ever show pending proposals.
+  // `listPendingProposals()` already filters by status (the vault ignores the
+  // metadata filter server-side, so it filters client-side), and we also drop
+  // anything optimistically resolved this session so a card can never linger.
   const pending = useMemo(
-    () => (proposals.data ?? []).filter((p) => !resolvedIds.has(p.id)),
+    () =>
+      (proposals.data ?? []).filter(
+        (p) =>
+          !resolvedIds.has(p.id) &&
+          (p.metadata?.status ?? 'pending') === 'pending',
+      ),
     [proposals.data, resolvedIds],
   )
 
@@ -114,6 +131,7 @@ export function Proposals() {
                 key={p.id}
                 proposal={p}
                 onResolved={onResolved}
+                onPartial={onPartial}
               />
             ))}
           </div>

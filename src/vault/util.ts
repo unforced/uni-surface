@@ -1,4 +1,4 @@
-import type { Note, NoteRef } from './types'
+import type { Note, NoteRef, EntityType } from './types'
 import type { Attachment } from './api'
 import { entityTypeOf } from './types'
 
@@ -164,6 +164,53 @@ export function entityName(ref: NoteRef | Note): string {
 
 export function entitySummary(ref: NoteRef | Note): string {
   return (ref.metadata?.summary as string) ?? ''
+}
+
+// An entity's `metadata.aliases` as a clean string array (or []).
+export function entityAliases(ref: NoteRef | Note): string[] {
+  const a = ref.metadata?.aliases
+  if (!Array.isArray(a)) return []
+  return a.map((x) => String(x).trim()).filter(Boolean)
+}
+
+// Find the most likely EXISTING entity a proposal name already refers to.
+// A match when, case-insensitively, the name:
+//   • equals the entity's name or one of its aliases, OR
+//   • is a word-subset of the entity's name (every word of `name` appears in it).
+// Same-type matches are preferred (and scored higher). Returns the best match or
+// null. Used for duplicate-detection on proposal cards (capability A).
+export function findExistingEntity(
+  name: string,
+  entities: (NoteRef | Note)[],
+  preferType?: EntityType | null,
+): (NoteRef | Note) | null {
+  const q = name.trim().toLowerCase()
+  if (!q) return null
+  const qWords = q.split(/\s+/).filter(Boolean)
+  let best: { e: NoteRef | Note; score: number } | null = null
+  for (const e of entities) {
+    const eName = entityName(e).toLowerCase()
+    const aliases = entityAliases(e).map((a) => a.toLowerCase())
+    const sameType = preferType ? entityTypeOf(e) === preferType : false
+    let score = 0
+    if (eName === q || aliases.includes(q)) {
+      score = 100 // exact name / alias match
+    } else {
+      // word-subset: every query word present somewhere in the entity name
+      const eWords = new Set(eName.split(/\s+/).filter(Boolean))
+      const subset = qWords.length > 0 && qWords.every((w) => eWords.has(w))
+      // or query name is a word-subset of an alias
+      const aliasSubset = aliases.some((al) => {
+        const aw = new Set(al.split(/\s+/).filter(Boolean))
+        return qWords.length > 0 && qWords.every((w) => aw.has(w))
+      })
+      if (subset || aliasSubset) score = 60
+    }
+    if (score === 0) continue
+    if (sameType) score += 20
+    if (!best || score > best.score) best = { e, score }
+  }
+  return best?.e ?? null
 }
 
 // Collapse a note's links to unique target entities (dedupe + keep one rel).
