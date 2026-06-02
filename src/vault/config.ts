@@ -1,11 +1,15 @@
 // Vault connection config — origin + bearer token, stored in localStorage.
-// NO hardcoded origin or token anywhere. The user signs in via OAuth (primary)
-// or pastes a token (secondary). Both paths land here.
+// No token is ever hardcoded — the user signs in via OAuth (primary) or pastes a
+// token (secondary). The vault URL is pre-filled with DEFAULT_VAULT_URL as a
+// convenience (editable on the connect screen) so a new device just needs sign-in.
 //
 // When signed in via OAuth we also persist the refresh material (refresh_token,
 // token_endpoint, client_id, issuer, expiry) so the api layer can silently
 // refresh the access token on a 401 — the user never re-signs-in unless the
 // refresh itself fails.
+
+// Default vault URL pre-filled on the connect screen (still editable).
+export const DEFAULT_VAULT_URL = 'https://parachute.taildf9ce2.ts.net/vault/default'
 
 const ORIGIN_KEY = 'pv.origin'
 const TOKEN_KEY = 'pv.token'

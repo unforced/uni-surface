@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ping } from '../vault/api'
-import { setConfig, getConfig } from '../vault/config'
+import { setConfig, getConfig, DEFAULT_VAULT_URL } from '../vault/config'
 import { beginOAuth } from '../vault/oauth'
 import { InsecureContextError } from '../vault/pkce'
 import { Seed } from '../components/icons'
@@ -12,7 +12,7 @@ import { Seed } from '../components/icons'
 // advanced fallback.
 export function Config() {
   const existing = getConfig()
-  const [origin, setOrigin] = useState(existing?.origin ?? '')
+  const [origin, setOrigin] = useState(existing?.origin ?? DEFAULT_VAULT_URL)
   const [token, setToken] = useState(existing?.token ?? '')
   const [status, setStatus] = useState<'idle' | 'signing' | 'testing'>('idle')
   const [error, setError] = useState<string | null>(null)
