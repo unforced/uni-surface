@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { patchNote, createNote, type LinkAdd } from '../vault/api'
+import { patchNote, createNote, linkCapture, type LinkAdd } from '../vault/api'
 import type { Note } from '../vault/types'
 import { ENTITY_TYPES, entityTypeOf, type EntityType } from '../vault/types'
 import { useEntityIndex } from '../vault/EntityIndex'
 import { entityName, previewText } from '../vault/util'
+import { DetectedEntities } from './DetectedEntities'
 import { CloseIcon, LinkIcon, PlusIcon } from './icons'
 
 const RELATIONSHIPS = ['relates-to', 'mentions', 'at', 'part-of', 'practices', 'uses', 'references']
@@ -40,10 +41,14 @@ export function WeaveEditor({
   capture,
   onClose,
   onWoven,
+  onLinked,
 }: {
   capture: Note
   onClose: () => void
   onWoven: (updated: Note) => void
+  // Called after a Detected-entities link is written directly (the editor stays
+  // open). Lets the parent refresh its "Woven into" display without closing.
+  onLinked?: () => void
 }) {
   const { entities, reload: reloadEntities } = useEntityIndex()
   const [query, setQuery] = useState('')
@@ -51,6 +56,10 @@ export function WeaveEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  // Entity ids linked directly from the Detected-entities scan this session.
+  // Excluded everywhere (detection, search, count) and folded into "already
+  // linked" so they can't be re-staged.
+  const [directLinked, setDirectLinked] = useState<Set<string>>(new Set())
 
   // new-entity form
   const [newType, setNewType] = useState<EntityType>('person')
@@ -60,12 +69,25 @@ export function WeaveEditor({
   const alreadyLinkedIds = useMemo(() => {
     const s = new Set<string>()
     for (const l of capture.links ?? []) if (l.targetId) s.add(l.targetId)
+    for (const id of directLinked) s.add(id)
     return s
-  }, [capture])
+  }, [capture, directLinked])
+
+  // Write a detected entity's link immediately (mirror of Unlinked mentions),
+  // then mark it linked so its row drops and the manual search excludes it.
+  async function linkDetected(entity: Note, rel: string) {
+    await linkCapture(capture.id, entity.path, rel)
+    setDirectLinked((prev) => new Set(prev).add(entity.id))
+    onLinked?.()
+  }
+
+  const pendingIds = useMemo(
+    () => new Set(pending.map((p) => p.entity.id)),
+    [pending],
+  )
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const pendingIds = new Set(pending.map((p) => p.entity.id))
     const pool = entities.filter(
       (e) => !alreadyLinkedIds.has(e.id) && !pendingIds.has(e.id),
     )
@@ -80,7 +102,7 @@ export function WeaveEditor({
         return name.includes(q) || sum.includes(q)
       })
       .slice(0, 12)
-  }, [query, entities, pending, alreadyLinkedIds])
+  }, [query, entities, pendingIds, alreadyLinkedIds])
 
   function addPending(entity: Note) {
     setPending((p) => [...p, { entity, relationship: suggestRel(entityTypeOf(entity)) }])
@@ -149,6 +171,16 @@ export function WeaveEditor({
         </div>
         <div className="panel-body">
           <div className="panel-quote">{previewText(capture, 600) || '(no text)'}</div>
+
+          {/* Auto-suggested links: entities this capture names (capture→entity,
+              the mirror of an entity's Unlinked mentions). Excludes already-
+              linked + already-staged so it never offers a duplicate. */}
+          <DetectedEntities
+            capture={capture}
+            alreadyLinkedIds={alreadyLinkedIds}
+            excludeIds={pendingIds}
+            onLink={linkDetected}
+          />
 
           {pending.length > 0 && (
             <>

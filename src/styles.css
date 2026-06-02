@@ -781,6 +781,46 @@ button { font-family: inherit; cursor: pointer; }
 .unlinked-link-btn { flex: none; padding: 7px 16px; font-size: 13px; align-self: center; }
 .unlinked-actions { margin-top: 14px; }
 
+/* ── Detected entities (capture→entity, in the weave editor) ───────── */
+.detected { margin-bottom: 4px; }
+.detected-head { display: flex; align-items: center; gap: 9px; }
+.detected-count {
+  font-family: var(--sans);
+  font-size: 11px; font-weight: 600; line-height: 1;
+  min-width: 18px; height: 18px; padding: 0 6px;
+  border-radius: var(--r-pill);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--terracotta-wash); color: var(--clay);
+  letter-spacing: 0; text-transform: none;
+}
+.detected-lead { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin: 0 0 12px; }
+.detected-empty { font-size: 13px; color: var(--ink-faint); margin: 0 0 16px; }
+.detected-error {
+  font-size: 13px; color: var(--clay); padding: 8px 12px;
+  background: color-mix(in srgb, var(--clay) 9%, var(--surface));
+  border: 1px solid var(--clay-soft); border-radius: var(--r-md); margin: 0 0 12px;
+}
+.detected-list { display: flex; flex-direction: column; gap: 7px; }
+.detected-row {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 11px 13px; border-radius: var(--r-md);
+  border: 1px solid var(--line); background: var(--surface);
+  border-left: 3px solid var(--tc, var(--clay));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.detected-row:hover { box-shadow: var(--shadow-soft); }
+.detected-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.detected-name-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.detected-name { font-weight: 600; font-size: 14px; color: var(--ink); }
+.detected-type {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--tc, var(--ink-faint)); font-weight: 700;
+}
+.detected-rel { font-size: 11.5px; color: var(--ink-faint); }
+.detected-snippet { font-size: 12.5px; }
+.detected-link-btn { flex: none; padding: 7px 16px; font-size: 13px; align-self: center; }
+.detected-actions { margin-top: 12px; margin-bottom: 4px; }
+
 .markdown { font-size: 16px; line-height: 1.72; color: var(--ink); }
 .markdown p { margin: 0 0 1em; }
 .markdown h1, .markdown h2, .markdown h3 { margin-top: 1.2em; }

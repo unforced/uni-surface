@@ -257,6 +257,30 @@ export function entityAliases(ref: NoteRef | Note): string[] {
   return a.map((x) => String(x).trim()).filter(Boolean)
 }
 
+// The terms that should match an entity in free text: its name, the FIRST word
+// of the name (covers bare mentions like "Rachel" for "Rachel Isaacson"), and
+// every alias. Deduped case-insensitively, empties dropped. Disambiguation falls
+// out of this per-entity: a bare "Rachel" only matches the Rachel who carries
+// "Rachel" as a name-first-word or alias — there's no special-casing. Used by
+// both Unlinked mentions (entity→captures) and Detected entities (capture→
+// entities) so the two directions stay symmetric.
+export function entityMatchTerms(ref: NoteRef | Note): string[] {
+  const name = entityName(ref).trim()
+  const firstWord = name.split(/\s+/)[0] ?? ''
+  const raw = [name, firstWord, ...entityAliases(ref)]
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const t of raw) {
+    const v = t.trim()
+    if (!v) continue
+    const k = v.toLowerCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(v)
+  }
+  return out
+}
+
 // Find the most likely EXISTING entity a proposal name already refers to.
 // A match when, case-insensitively, the name:
 //   • equals the entity's name or one of its aliases, OR

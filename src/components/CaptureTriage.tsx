@@ -221,7 +221,18 @@ export function CaptureTriage({
 
       {/* Weave editor stacks on top; it renders its own overlay. */}
       {weaving && (
-        <WeaveEditor capture={note} onClose={() => setWeaving(false)} onWoven={onWoven} />
+        <WeaveEditor
+          capture={note}
+          onClose={() => setWeaving(false)}
+          onWoven={onWoven}
+          onLinked={() => {
+            // A Detected-entities link was written directly — refresh the full
+            // note (so "Woven into" + the scan's exclude-set update) and the
+            // tray, but keep the editor open for more links.
+            reload()
+            onChanged()
+          }}
+        />
       )}
     </div>
   )
