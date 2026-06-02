@@ -6,6 +6,7 @@ import { entityTypeOf, isCapture } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { Loading, ErrorBanner, EmptyState, Toast } from '../components/common'
+import { UnlinkedMentions } from '../components/UnlinkedMentions'
 import { BackIcon } from '../components/icons'
 import {
   entityName,
@@ -77,6 +78,8 @@ export function EntityDetail() {
               {captureNotes.data && captureNotes.data.length > 0 && (
                 <CaptureTimeline notes={captureNotes.data} />
               )}
+
+              <UnlinkedMentions entity={data} onLinked={reload} />
 
               {data.content && previewText(data).length > 0 && (
                 <div style={{ marginTop: 36 }}>
