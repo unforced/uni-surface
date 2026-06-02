@@ -943,6 +943,39 @@ button { font-family: inherit; cursor: pointer; }
 .proposals-count { color: var(--ink-soft); font-size: 14px; margin: 0 0 22px; }
 .proposals-count strong { color: var(--clay); font-weight: 600; }
 
+/* ── Weave screen: Proposals · Unwoven segmented control ── */
+.weave-tabs {
+  display: inline-flex; gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  margin-bottom: 26px;
+}
+.weave-tab {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--ink-soft); font-size: 14px; font-weight: 600;
+  padding: 7px 16px; border-radius: var(--r-pill);
+  transition: all 0.15s ease;
+}
+.weave-tab:hover { color: var(--ink); }
+.weave-tab.sel {
+  background: var(--surface);
+  color: var(--clay);
+  box-shadow: var(--shadow-soft);
+}
+.weave-tab-count {
+  font-size: 11.5px; font-weight: 600; line-height: 1;
+  min-width: 18px; height: 18px; padding: 0 6px;
+  border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--ink-faint);
+  border: 1px solid var(--line);
+}
+.weave-tab.sel .weave-tab-count { background: var(--clay); color: #fff; border-color: transparent; }
+.weave-panel { animation: fade 0.2s ease; }
+
 .proposal-group { margin-bottom: 30px; }
 .proposal-group-head {
   display: flex; align-items: center; gap: 10px;

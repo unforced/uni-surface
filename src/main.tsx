@@ -6,6 +6,7 @@ import { RequireConfig } from './App'
 import { Config } from './routes/Config'
 import { OAuthCallback } from './routes/OAuthCallback'
 import { Today } from './routes/Today'
+import { Weave } from './routes/Weave'
 import { Proposals } from './routes/Proposals'
 import { Browse } from './routes/Browse'
 import { EntityDetail } from './routes/EntityDetail'
@@ -32,6 +33,8 @@ const router = createBrowserRouter(
       element: <RequireConfig />,
       children: [
         { index: true, element: <Today /> },
+        { path: 'weave', element: <Weave /> },
+        // Back-compat: the old Proposals route now redirects into Weave.
         { path: 'proposals', element: <Proposals /> },
         { path: 'browse', element: <Browse /> },
         { path: 'entity/:path', element: <EntityDetail /> },

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearConfig, hasConfig, isOAuth } from './vault/config'
-import { listPendingProposals } from './vault/api'
-import { PROPOSAL_RESOLVED_EVENT } from './routes/Proposals'
+import { listNotes, listPendingProposals } from './vault/api'
+import { PROPOSAL_RESOLVED_EVENT } from './routes/Weave'
 import { EntityIndexProvider } from './vault/EntityIndex'
 import { useTheme } from './components/useTheme'
 import { SearchPalette } from './components/SearchPalette'
@@ -40,24 +40,31 @@ function Shell() {
   // After a capture lands, offer to weave it (links) right away.
   const [weaveNew, setWeaveNew] = useState<Note | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [proposalCount, setProposalCount] = useState<number | null>(null)
+  // Combined "to tend" count for the Weave nav badge: pending proposals +
+  // unwoven captures.
+  const [weaveCount, setWeaveCount] = useState<number | null>(null)
   const nav = useNavigate()
   const loc = useLocation()
 
-  // Live count of pending Weaver proposals for the nav badge. Refresh on mount
-  // and whenever a proposal is resolved anywhere in the app.
+  // Live combined count (pending proposals + unwoven captures) for the Weave nav
+  // badge. Refresh on mount and whenever an item is resolved anywhere in the app.
   useEffect(() => {
     let live = true
     const load = () => {
-      listPendingProposals()
-        .then((ps) => { if (live) setProposalCount(ps.length) })
-        .catch(() => { if (live) setProposalCount(null) })
+      Promise.all([
+        listPendingProposals(),
+        listNotes({ tag: 'capture', hasLinks: false, limit: 200 }),
+      ])
+        .then(([ps, caps]) => { if (live) setWeaveCount(ps.length + caps.length) })
+        .catch(() => { if (live) setWeaveCount(null) })
     }
     load()
     window.addEventListener(PROPOSAL_RESOLVED_EVENT, load)
+    window.addEventListener(CAPTURE_CREATED_EVENT, load)
     return () => {
       live = false
       window.removeEventListener(PROPOSAL_RESOLVED_EVENT, load)
+      window.removeEventListener(CAPTURE_CREATED_EVENT, load)
     }
   }, [])
 
@@ -116,9 +123,9 @@ function Shell() {
           </Link>
           <nav className="nav">
             <NavLink to="/" end>Today</NavLink>
-            <NavLink to="/proposals" className={({ isActive }) => (isActive ? 'active nav-proposals' : 'nav-proposals')}>
-              Proposals
-              {proposalCount ? <span className="nav-badge">{proposalCount}</span> : null}
+            <NavLink to="/weave" className={({ isActive }) => (isActive ? 'active nav-proposals' : 'nav-proposals')}>
+              Weave
+              {weaveCount ? <span className="nav-badge">{weaveCount}</span> : null}
             </NavLink>
             <NavLink to="/browse">Browse</NavLink>
           </nav>

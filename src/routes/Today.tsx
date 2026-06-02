@@ -1,19 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listNotes, listPendingProposals } from '../vault/api'
-import { PROPOSAL_RESOLVED_EVENT } from './Proposals'
+import { listNotes } from '../vault/api'
 import { CAPTURE_CREATED_EVENT, openCapture } from '../App'
 import { PlusIcon } from '../components/icons'
-import type { Note } from '../vault/types'
 import { entityTypeOf } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
-import {
-  captureGlyph,
-} from '../components/icons'
-import { captureKindOf } from '../vault/types'
 import { CaptureCard } from '../components/CaptureCard'
-import { Loading, ErrorBanner, EmptyState, EntityChip, Toast } from '../components/common'
-import { CaptureTriage } from '../components/CaptureTriage'
+import { Loading, ErrorBanner, EmptyState, EntityChip } from '../components/common'
 import {
   groupByDay,
   formatDayHeading,
@@ -22,18 +15,12 @@ import {
   entityHref,
   entityName,
   linkedEntities,
-  previewText,
-  formatRelative,
 } from '../vault/util'
 
 const RECENT_LIMIT = 60
-const WEAVE_LIMIT = 12
 
 export function Today() {
   const [showDormant, setShowDormant] = useState(false)
-  const [triaging, setTriaging] = useState<Note | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
 
   // Recent captures with links + content (for the spine + "touching today").
   const captures = useAsync(
@@ -54,39 +41,12 @@ export function Today() {
     [],
   )
 
-  // To-weave: recent unwoven captures.
-  const unwoven = useAsync(
-    () =>
-      listNotes({
-        tag: 'capture',
-        hasLinks: false,
-        sort: 'desc',
-        limit: WEAVE_LIMIT,
-        includeContent: true,
-      }),
-    [],
-  )
-
-  // Pending Weaver proposals — the second review queue, sitting beside to-weave.
-  const proposals = useAsync(() => listPendingProposals(), [])
-
-  // Refresh the spine + to-weave tray when a capture lands anywhere in the app.
+  // Refresh the spine when a capture lands anywhere in the app.
   useEffect(() => {
-    const onCreated = () => {
-      captures.reload()
-      unwoven.reload()
-    }
+    const onCreated = () => captures.reload()
     window.addEventListener(CAPTURE_CREATED_EVENT, onCreated)
     return () => window.removeEventListener(CAPTURE_CREATED_EVENT, onCreated)
     // reload fns are stable from useAsync; intentionally run once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Refresh the proposals count when one is resolved on the Proposals view.
-  useEffect(() => {
-    const onResolved = () => proposals.reload()
-    window.addEventListener(PROPOSAL_RESOLVED_EVENT, onResolved)
-    return () => window.removeEventListener(PROPOSAL_RESOLVED_EVENT, onResolved)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -132,36 +92,12 @@ export function Today() {
     return { activeProjects, dormantProjects, activeThreads }
   }, [entities.data])
 
-  const trayItems = useMemo(
-    () => (unwoven.data ?? []).filter((c) => !removedIds.has(c.id)),
-    [unwoven.data, removedIds],
-  )
-
-  function flash(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2200)
-  }
-
-  // Save/weave: refresh the tray + timeline so woven/edited notes drop or update.
-  function onTriageChanged() {
-    captures.reload()
-    unwoven.reload()
-  }
-
-  // Delete: pull from the tray immediately, then refresh everything.
-  function onTriageDeleted(id: string) {
-    setRemovedIds((s) => new Set(s).add(id))
-    flash('Deleted 🍂')
-    captures.reload()
-    unwoven.reload()
-  }
-
   return (
     <div className="page">
       <div className="page-head">
         <div className="kicker">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         <h1>Today</h1>
-        <p className="sub">What's alive in your vault, newest first — and what's still waiting to be woven.</p>
+        <p className="sub">What's alive in your vault, newest first.</p>
       </div>
 
       <div className="today-grid">
@@ -195,51 +131,6 @@ export function Today() {
               </div>
             </div>
           ))}
-
-          {/* ── Review queues: proposals + to-weave sit together ── */}
-          {(proposals.data?.length ?? 0) > 0 && (
-            <Link to="/proposals" className="proposals-tray">
-              <div className="proposals-tray-head">
-                <span className="pt-glyph">𓂃</span>
-                <h2>Weaver proposals</h2>
-                <span className="weave-badge">{proposals.data!.length}</span>
-              </div>
-              <p className="weave-sub" style={{ marginBottom: 0 }}>
-                {proposals.data!.length} suggested entit{proposals.data!.length === 1 ? 'y is' : 'ies are'} waiting for
-                your review — accept, revise, or skip each one. Nothing is created until you say so.
-              </p>
-            </Link>
-          )}
-
-          {/* ── To-weave tray (the one loud thing) ── */}
-          <div className="weave-tray">
-            <div className="weave-head">
-              <h2>To weave</h2>
-              {trayItems.length > 0 && <span className="weave-badge">{trayItems.length}</span>}
-            </div>
-            <p className="weave-sub">
-              Recent captures with no links yet. Open one to connect it to your projects, people, and threads.
-            </p>
-            {unwoven.loading && <Loading label="Finding loose threads…" />}
-            {Boolean(unwoven.error) && <ErrorBanner error={unwoven.error} onRetry={unwoven.reload} />}
-            {unwoven.data && trayItems.length === 0 && (
-              <div className="weave-empty">Everything recent is woven. The garden is tended. 🌾</div>
-            )}
-            <div className="weave-list">
-              {trayItems.map((c) => {
-                const kind = captureKindOf(c)
-                return (
-                  <button key={c.id} className="weave-item" onClick={() => setTriaging(c)}>
-                    <span className="wi-glyph">{captureGlyph(kind)}</span>
-                    <span className="wi-text">
-                      <div className="wi-preview">{previewText(c, 200) || '(no text)'}</div>
-                      <div className="wi-time">{formatRelative(c.createdAt)}</div>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
         </div>
 
         {/* ── Rail ── */}
@@ -325,16 +216,6 @@ export function Today() {
           </div>
         </aside>
       </div>
-
-      {triaging && (
-        <CaptureTriage
-          seed={triaging}
-          onClose={() => setTriaging(null)}
-          onChanged={onTriageChanged}
-          onDeleted={onTriageDeleted}
-        />
-      )}
-      {toast && <Toast message={toast} />}
     </div>
   )
 }
