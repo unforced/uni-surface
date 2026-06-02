@@ -1049,6 +1049,16 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 13.5px; color: var(--ink); line-height: 1.45;
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
+/* Highlighted matched term inside a mention snippet — warm, legible in both
+   themes (terracotta wash bg + clay ink, reusing palette tokens). */
+.pc-cap-hit {
+  background: var(--terracotta-wash);
+  color: var(--clay);
+  font-weight: 600;
+  padding: 0 2px; border-radius: 4px;
+}
+/* No literal match — the generic preview fallback reads a touch softer. */
+.pc-cap-preview-fallback { color: var(--ink-soft); font-style: italic; }
 .pc-cap-date { font-size: 11.5px; color: var(--ink-faint); }
 
 .pc-progress {

@@ -155,6 +155,90 @@ export function previewText(note: Note, max = 220): string {
   return clean.length > max ? clean.slice(0, max).trimEnd() + '…' : clean
 }
 
+// Normalize raw note content into a single readable line (drop embeds, flatten
+// wikilinks to their label, strip heading markers, collapse whitespace) — the
+// same shape previewText produces, but without truncation, so we can search it.
+function flattenContent(content: string): string {
+  return stripEmbeds(content)
+    .replace(WIKILINK_RE, (_m, p1) => String(p1).split('|').pop()!.split('/').pop()!)
+    .replace(/^#+\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// A mention snippet: the slice of a capture's text around the first place one of
+// `terms` appears, split so the matched run can be highlighted. `before`/`after`
+// carry leading/trailing "…" when the text was trimmed; `match` is the exact
+// substring as it appears in the text (original casing preserved).
+export interface MentionSnippet {
+  before: string
+  match: string
+  after: string
+}
+
+// Escape a string for safe use as a literal inside a RegExp.
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Find the first occurrence in `content` of any of `terms` (case-insensitive,
+// whole-word where the term is word-like) and return ~`pad` chars of context on
+// each side, trimmed to word boundaries with leading/trailing ellipses. Terms
+// are tried in order, but we pick the EARLIEST match across all of them so the
+// snippet lands on the first time the entity is named. Returns null if none
+// match (caller falls back to a plain preview).
+export function mentionSnippet(
+  content: string,
+  terms: string[],
+  pad = 80,
+): MentionSnippet | null {
+  const text = flattenContent(content)
+  if (!text) return null
+
+  // De-dupe + drop empties; keep longer terms first so a multi-word name wins
+  // over its first word when both start at the same index.
+  const cleaned = [...new Set(terms.map((t) => t.trim()).filter(Boolean))].sort(
+    (a, b) => b.length - a.length,
+  )
+  if (cleaned.length === 0) return null
+
+  let bestIdx = -1
+  let bestLen = 0
+  for (const term of cleaned) {
+    // Word-boundary match when the term is alphanumeric-bounded, so "Rachel"
+    // doesn't match inside "Rachelle"; fall back to a plain search otherwise.
+    const wordish = /^\w.*\w$|^\w$/.test(term)
+    const pat = wordish ? `\\b${escapeRegExp(term)}\\b` : escapeRegExp(term)
+    const re = new RegExp(pat, 'i')
+    const m = re.exec(text)
+    if (!m) continue
+    if (bestIdx === -1 || m.index < bestIdx) {
+      bestIdx = m.index
+      bestLen = m[0].length
+    }
+  }
+  if (bestIdx === -1) return null
+
+  const matchStr = text.slice(bestIdx, bestIdx + bestLen)
+
+  // Expand the window, then nudge each edge out to the nearest whitespace so we
+  // don't cut a word in half.
+  let start = Math.max(0, bestIdx - pad)
+  let end = Math.min(text.length, bestIdx + bestLen + pad)
+  if (start > 0) {
+    const sp = text.indexOf(' ', start)
+    if (sp !== -1 && sp < bestIdx) start = sp + 1
+  }
+  if (end < text.length) {
+    const sp = text.lastIndexOf(' ', end)
+    if (sp !== -1 && sp > bestIdx + bestLen) end = sp
+  }
+
+  const before = (start > 0 ? '…' : '') + text.slice(start, bestIdx)
+  const after = text.slice(bestIdx + bestLen, end) + (end < text.length ? '…' : '')
+  return { before, match: matchStr, after }
+}
+
 // ---- Entities ----
 
 export function entityName(ref: NoteRef | Note): string {

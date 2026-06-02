@@ -5,6 +5,7 @@ import {
   dedupeAliases,
   entityPath,
   fetchCapturesByIds,
+  getNote,
   linkCapture,
   resolveProposal,
   searchCaptures,
@@ -18,6 +19,8 @@ import {
   findExistingEntity,
   formatDayHeading,
   dayKey,
+  mentionSnippet,
+  previewText,
 } from '../vault/util'
 import { LinkIcon, PlusIcon } from './icons'
 import {
@@ -76,6 +79,29 @@ export function ProposalCard({
   const confidence = proposalConfidence(proposal)
   const baseRel = String(meta.relationship ?? suggestRel(baseType))
 
+  // Terms to look for inside each supporting capture's text: the full entity
+  // name, its first word (covers bare-name mentions like "Rachel" for "Rachel
+  // Isaacson"), and any proposal aliases. Used to extract a highlighted mention
+  // snippet per row so the human can verify the link is genuinely about this
+  // entity before accepting.
+  const matchTerms = useMemo<string[]>(() => {
+    const out: string[] = []
+    const name = baseName.trim()
+    if (name) {
+      out.push(name)
+      const first = name.split(/\s+/)[0]
+      if (first && first !== name) out.push(first)
+    }
+    const aliases = meta.aliases
+    if (Array.isArray(aliases)) {
+      for (const a of aliases) {
+        const v = String(a).trim()
+        if (v) out.push(v)
+      }
+    }
+    return out
+  }, [baseName, meta.aliases])
+
   const { entities, reload: reloadEntities } = useEntityIndex()
 
   // ── Revise state (name / type / summary the human can correct) ──
@@ -110,6 +136,10 @@ export function ProposalCard({
   // in fallback mode it seeds with the entity name (the legacy behavior).
   const [searchTerm, setSearchTerm] = useState(hasCurated ? '' : baseName)
   const [rows, setRows] = useState<CaptureRow[]>([])
+  // Lazily-fetched note content keyed by capture id — search-added rows come
+  // back WITHOUT content, so we fetch it on demand to extract a mention snippet.
+  // null = fetch attempted but failed/empty (so we stop retrying that id).
+  const [content, setContent] = useState<Record<string, string | null>>({})
   const [loadingCaps, setLoadingCaps] = useState(true)
   const [capError, setCapError] = useState<string | null>(null)
   const debounce = useRef<number | undefined>(undefined)
@@ -196,6 +226,37 @@ export function ProposalCard({
     // linkedIds intentionally omitted: re-running on every link would refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm])
+
+  // Ensure each row has note content available for snippet extraction. Curated
+  // rows arrive with content (fetched by id); search-added rows don't, so fetch
+  // theirs lazily by id. Results (and failures, as null) are cached so we never
+  // refetch the same capture. Runs whenever the row set changes.
+  useEffect(() => {
+    const missing = rows
+      .filter((r) => r.note.content == null && !(r.note.id in content))
+      .map((r) => r.note.id)
+    if (missing.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const settled = await Promise.allSettled(missing.map((id) => getNote(id)))
+      if (cancelled) return
+      setContent((prev) => {
+        const next = { ...prev }
+        missing.forEach((id, i) => {
+          const r = settled[i]
+          next[id] =
+            r.status === 'fulfilled' ? (r.value.content ?? null) : null
+        })
+        return next
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+    // `content` is intentionally omitted: it's updated inside and the `id in
+    // content` guard already prevents refetching. Keying on rows is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows])
 
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows])
 
@@ -583,7 +644,11 @@ export function ProposalCard({
                 onChange={() => toggleRow(r.note.id)}
               />
               <span className="pc-cap-text">
-                <span className="pc-cap-preview">{r.note.preview?.trim() || entityName(r.note)}</span>
+                <CaptureMention
+                  note={r.note}
+                  content={r.note.content ?? content[r.note.id] ?? null}
+                  terms={matchTerms}
+                />
                 <span className="pc-cap-date">
                   {formatDayHeading(dayKey(r.note.createdAt))}
                   {linkedIds.has(r.note.id) && <span className="pc-cap-linked"> · linked</span>}
@@ -631,5 +696,43 @@ export function ProposalCard({
         </button>
       </div>
     </article>
+  )
+}
+
+// One capture row's text: the sentence-ish slice where the proposed entity is
+// actually named, with the matched term highlighted — so the reviewer can see
+// *why* this capture supports the entity (e.g. "…my friend Rachel…" vs a bare
+// generic preview). Falls back to a plain preview (no highlight) when content
+// hasn't loaded yet or contains no literal mention of the name/aliases.
+function CaptureMention({
+  note,
+  content,
+  terms,
+}: {
+  note: Note
+  content: string | null
+  terms: string[]
+}) {
+  const snippet = useMemo(
+    () => (content ? mentionSnippet(content, terms) : null),
+    [content, terms],
+  )
+  if (snippet) {
+    return (
+      <span className="pc-cap-preview">
+        {snippet.before}
+        <mark className="pc-cap-hit">{snippet.match}</mark>
+        {snippet.after}
+      </span>
+    )
+  }
+  // Fallback: the existing generic preview, flagged so it's clear it's not a
+  // located mention (content may be missing, or the capture doesn't name the
+  // entity literally — rare, but still a valid support via embedding/topic).
+  const text = previewText(note) || note.preview?.trim() || entityName(note)
+  return (
+    <span className="pc-cap-preview pc-cap-preview-fallback" title="No literal name match — showing a preview">
+      {text}
+    </span>
   )
 }
