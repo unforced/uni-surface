@@ -306,20 +306,34 @@ export function entityPath(type: EntityType, name: string): string {
   return `${ENTITY_FOLDER[type]}/${name.trim()}`
 }
 
-// The pending-proposals query: tag=proposal, status==pending.
-// NOTE: the metadata operator filter is sent for backends that honour it, but
-// the vault currently returns ALL proposals regardless of the freeform `status`
-// filter — so we ALSO filter client-side. This guarantees the review list only
-// ever shows pending proposals (resolved cards can never linger or reappear).
+// The pending-proposals query: tag=proposal, status==pending. The vault now
+// filters server-side on the indexed `status` field via `?metadata={...}`
+// (vault#426, live), so we trust it — the old client-side filter is gone.
 export async function listPendingProposals(): Promise<Note[]> {
   const meta = encodeURIComponent(JSON.stringify({ status: { eq: 'pending' } }))
-  const all = await request<Note[]>(
+  return request<Note[]>(
     'GET',
     // include_content: the Weaver intent now lives in the note's JSON content
     // (parsed into the editable form); metadata is kept for transition fallback.
     `/notes?tag=proposal&metadata=${meta}&include_metadata=true&include_content=true&limit=200`,
   )
-  return all.filter((p) => (p.metadata?.status ?? 'pending') === 'pending')
+}
+
+// Rename/move a note to a new path. The note id is STABLE across a rename, so
+// every link pointing at it survives. Entity rename uses this (the display name
+// is the path leaf) — see RenameEntity.
+export function renameNotePath(id: string, newPath: string): Promise<Note> {
+  return request<Note>('PATCH', `/notes/${encodeURIComponent(id)}`, { path: newPath, force: true })
+}
+
+// Full-text search across ALL notes (not just captures), with content — used by
+// rename-with-propagation to find every place an old name/spelling appears.
+export function searchAllNotes(term: string): Promise<Note[]> {
+  const p = new URLSearchParams()
+  p.set('search', term)
+  p.set('include_content', 'true')
+  p.set('limit', '100')
+  return request<Note[]>('GET', `/notes?${p.toString()}`)
 }
 
 // Add a value to an entity's `metadata.aliases` (string array), de-duped

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { getNote, patchNote } from '../vault/api'
 import type { Note, NoteRef } from '../vault/types'
 import { entityTypeOf, isCapture } from '../vault/types'
@@ -7,6 +7,7 @@ import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { Loading, ErrorBanner, EmptyState, Toast } from '../components/common'
 import { UnlinkedMentions } from '../components/UnlinkedMentions'
+import { RenameEntity } from '../components/RenameEntity'
 import { BackIcon } from '../components/icons'
 import {
   entityName,
@@ -106,7 +107,9 @@ export function EntityDetail() {
 
 function EntityHeader({ entity, onSaved }: { entity: Note; onSaved: () => void }) {
   const type = entityTypeOf(entity)
+  const nav = useNavigate()
   const [editing, setEditing] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(String(entity.metadata?.summary ?? ''))
   const [saving, setSaving] = useState(false)
   const fields = TYPE_FIELDS[type ?? ''] ?? []
@@ -127,7 +130,23 @@ function EntityHeader({ entity, onSaved }: { entity: Note; onSaved: () => void }
       <div className="detail-head">
         <span className="type-badge">{type}</span>
       </div>
-      <h1 className="detail-title">{entityName(entity)}</h1>
+      <h1 className="detail-title">
+        {entityName(entity)}
+        <button className="rename-trigger" onClick={() => setRenaming(true)} title="Rename / fix spelling">
+          rename
+        </button>
+      </h1>
+
+      {renaming && (
+        <RenameEntity
+          entity={entity}
+          onClose={() => setRenaming(false)}
+          onRenamed={(newPath) => {
+            setRenaming(false)
+            nav(`/entity/${encodeURIComponent(newPath)}`)
+          }}
+        />
+      )}
 
       {editing ? (
         <div style={{ marginTop: 8 }}>
