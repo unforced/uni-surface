@@ -43,6 +43,36 @@ against your local vault or your Tailscale URL, whichever you paste in.
 - Warm / light by default; a dark toggle is in the top bar. Theme + connection are
   remembered in `localStorage`.
 
+## Installable & offline-first (PWA)
+
+It's a proper **Progressive Web App** — install it to your dock / home screen and
+it opens standalone, no browser chrome. The app shell is precached, so it loads
+instantly and works with no network.
+
+**Capture works offline.** Every capture — text *or* voice — is written first to a
+local **outbox** (IndexedDB), then synced to the vault in the background:
+
+- **Online**: the capture enqueues, flushes within a moment, and you're offered
+  the weave step on the real note — same as before.
+- **Offline (or vault unreachable)**: the capture still succeeds. It appears in
+  *Today* immediately with a small *offline — queued* chip, and a **sync engine**
+  drains the outbox automatically when you reconnect (also on tab focus and a
+  30 s tick). Voice memos stash their audio bytes locally too, so the recording
+  survives a reload and uploads + transcribes once you're back.
+- A quiet **sync badge** in the top bar appears only when there's something to
+  say (offline, *N* queued, or a write stuck on a conflict). Tap it to sync now.
+
+The outbox is FIFO, with exponential backoff on transient errors, a halt-and-
+re-auth path on `401`, and conflicts parked as *needs-attention* rather than
+silently clobbering. The vault API is **never** cached by the service worker —
+offline writes go through the app's own outbox, not the SW. (Model mirrored from
+the Parachute Notes app; see `src/vault/sync/`.)
+
+**No more stale bundles.** With `registerType: 'prompt'`, a freshly-deployed
+version installs but *waits* — a calm "A new version is ready — Refresh" banner
+appears, and tapping it activates the new build and reloads. (This replaces the
+old hard-refresh dance.)
+
 ## The model — schema & strategies
 
 This app is opinionated about *how* to keep a personal knowledge graph alive. The
@@ -206,7 +236,9 @@ Vite + React + TypeScript, React Router, static-only. Deliberately few deps:
 | `react`, `react-dom` | UI.                                                               |
 | `react-router-dom` | Client-side routing for the in-app navigation between captures/entities. |
 | `react-markdown`   | Renders capture markdown. `[[wikilinks]]` and `![[audio]]` embeds are post-processed by the app itself (`src/components/Markdown.tsx`) into in-app navigable links + an audio player. |
-| `puppeteer-core` *(dev only)* | Used once to capture `docs/screenshot.png` against a live vault. Not shipped. |
+| `idb`              | Tiny Promise wrapper over IndexedDB — backs the offline capture outbox (`src/vault/sync/`). |
+| `vite-plugin-pwa` *(dev only)* | Generates the service worker (Workbox) + web manifest; drives the install + update-banner flow. |
+| `puppeteer-core` *(dev only)* | Used once to capture `docs/screenshot.png` + generate the app icons (`scripts/gen-icons.mjs`). Not shipped. |
 
 Fonts: Fraunces (serif headings) + Inter (body), loaded from Google Fonts.
 
@@ -224,6 +256,9 @@ New voice captures upload via `POST /api/storage/upload` (field `file`) then
 src/
   vault/          API client, config (localStorage auth), types, helpers,
                   entity index, oauth (PKCE+DCR), pkce, proposalSpec (JSON intents)
+  vault/sync/     offline outbox: db (IndexedDB), outbox (enqueue/drain),
+                  engine (tick + reconnect + focus) — capture works offline
+  components/     …UpdateBanner (new-version prompt), SyncBadge (offline/queued)
   components/     EntityChip, CaptureCard, WeaveEditor, Markdown (wikilinks),
                   SearchPalette, AudioEmbed, Capture (new-capture composer),
                   CaptureTriage, DetectedEntities, UnlinkedMentions,

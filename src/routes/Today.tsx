@@ -4,6 +4,8 @@ import { listNotes } from '../vault/api'
 import { CAPTURE_CREATED_EVENT, openCapture } from '../App'
 import { PlusIcon } from '../components/icons'
 import { entityTypeOf } from '../vault/types'
+import type { Note } from '../vault/types'
+import { pendingCaptures, onOutboxChange } from '../vault/sync/outbox'
 import { useAsync } from '../vault/useAsync'
 import { CaptureCard } from '../components/CaptureCard'
 import { Loading, ErrorBanner, EmptyState, EntityChip } from '../components/common'
@@ -41,19 +43,36 @@ export function Today() {
     [],
   )
 
-  // Refresh the spine when a capture lands anywhere in the app.
+  // Optimistic, not-yet-synced captures from the offline outbox.
+  const [pending, setPending] = useState<Note[]>([])
+
+  // Refresh the spine when a capture lands, syncs, or the outbox changes.
   useEffect(() => {
-    const onCreated = () => captures.reload()
+    const loadPending = () => void pendingCaptures().then(setPending)
+    loadPending()
+    const off = onOutboxChange(loadPending)
+    const onCreated = () => {
+      captures.reload()
+      loadPending()
+    }
     window.addEventListener(CAPTURE_CREATED_EVENT, onCreated)
-    return () => window.removeEventListener(CAPTURE_CREATED_EVENT, onCreated)
+    window.addEventListener('pv:capture-synced', onCreated)
+    return () => {
+      off()
+      window.removeEventListener(CAPTURE_CREATED_EVENT, onCreated)
+      window.removeEventListener('pv:capture-synced', onCreated)
+    }
     // reload fns are stable from useAsync; intentionally run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const days = useMemo(
-    () => (captures.data ? groupByDay(captures.data) : []),
-    [captures.data],
-  )
+  // Merge: pending captures (local: ids) ahead of the synced server captures.
+  const merged = useMemo(() => {
+    const server = captures.data ?? []
+    return pending.length ? [...pending, ...server] : server
+  }, [captures.data, pending])
+
+  const days = useMemo(() => groupByDay(merged), [merged])
 
   // "What you're touching today" — entities linked from today's captures.
   const touching = useMemo(() => {
@@ -111,8 +130,10 @@ export function Today() {
             </span>
           </button>
 
-          {captures.loading && <Loading label="Reading your recent captures…" />}
-          {Boolean(captures.error) && <ErrorBanner error={captures.error} onRetry={captures.reload} />}
+          {captures.loading && merged.length === 0 && <Loading label="Reading your recent captures…" />}
+          {Boolean(captures.error) && merged.length === 0 && (
+            <ErrorBanner error={captures.error} onRetry={captures.reload} />
+          )}
           {captures.data && days.length === 0 && (
             <EmptyState art="🌱" title="No captures yet">
               Once you start journaling into your vault, they'll bloom here.

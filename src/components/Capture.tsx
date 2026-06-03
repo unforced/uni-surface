@@ -1,16 +1,49 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createNote, uploadStorageFile, addAttachment } from '../vault/api'
 import type { Note } from '../vault/types'
 import { capturePath, memoFilename } from '../vault/util'
+import { enqueue, putBlob } from '../vault/sync/outbox'
+import { newLocalId } from '../vault/sync/db'
+import { runOnce } from '../vault/sync/engine'
 import { CloseIcon, TextGlyph, VoiceGlyph } from './icons'
 
 // "New capture" modal — text or voice, mirroring the Notes compose flow.
 //
-// Text: markdown textarea → POST /api/notes (tags: capture/text).
-// Voice: MediaRecorder(audio/webm;codecs=opus) → on stop, upload the blob to
-//   /api/storage/upload, create a note embedding ![[memo-*.webm]], then attach
-//   the uploaded file with transcribe:true (transcription fills content/
-//   metadata.transcript async). The capture shows "transcribing…" meanwhile.
+// Both kinds ALWAYS enqueue to the offline outbox first (src/vault/sync), then
+// trigger a drain. Online, we wait briefly for the server note (to offer
+// weaving); offline (or slow), we hand back an optimistic note and the outbox
+// syncs in the background. So capture never fails for lack of a network.
+//
+// Voice: MediaRecorder(audio/webm;codecs=opus) → on stop, the audio bytes are
+// stashed in IndexedDB and three mutations are queued (create-note embedding
+// ![[memo-*.webm]] → upload-attachment → link-attachment w/ transcribe:true).
+
+// Wait briefly for a queued create-note to sync, so an ONLINE capture hands back
+// the real server Note (to offer weaving). Resolves null if it doesn't land in
+// time (offline or slow) — the optimistic note is shown instead while the outbox
+// keeps trying in the background.
+function waitForSync(localId: string, timeoutMs: number): Promise<Note | null> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (note: Note | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      window.removeEventListener('pv:capture-synced', handler)
+      resolve(note)
+    }
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { localId?: string; note?: Note } | undefined
+      if (detail?.localId === localId && detail.note) finish(detail.note)
+    }
+    const timer = setTimeout(() => finish(null), timeoutMs)
+    window.addEventListener('pv:capture-synced', handler)
+  })
+}
+
+function optimistic(localId: string, path: string, content: string, tags: string[]): Note {
+  const now = new Date().toISOString()
+  return { id: `local:${localId}`, path, content, tags, metadata: {}, createdAt: now, updatedAt: now }
+}
 
 const PREFERRED_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
 
@@ -35,11 +68,15 @@ type VoicePhase = 'idle' | 'recording' | 'saving'
 export function Capture({
   onClose,
   onCreated,
+  onQueued,
 }: {
   onClose: () => void
-  // Called once a capture lands. `note` is the created note; the host refreshes
-  // its list and may offer to weave it.
+  // Called when a capture syncs to the vault while online — the host refreshes
+  // its list and offers to weave it (links need a server-side note).
   onCreated: (note: Note) => void
+  // Called when a capture is saved offline / not yet synced — the host shows it
+  // optimistically and flashes a "will sync" toast (no weave offer yet).
+  onQueued: (note: Note) => void
 }) {
   const [mode, setMode] = useState<Mode>('choose')
   const [text, setText] = useState('')
@@ -70,20 +107,23 @@ export function Capture({
   // Release the mic if the modal unmounts mid-recording.
   useEffect(() => () => releaseMic(), [releaseMic])
 
-  // ── text submit ──
+  // ── text submit ── (enqueue → drain → online: real note; offline: optimistic)
   async function submitText() {
     const content = text.trim()
     if (!content || saving) return
     setSaving(true)
     setError(null)
     try {
-      const note = await createNote({
-        path: capturePath('text'),
-        content,
-        tags: ['capture/text'],
-        metadata: {},
-      })
-      onCreated(note)
+      const localId = newLocalId()
+      const path = capturePath('text')
+      const tags = ['capture/text']
+      // Attach the waiter BEFORE flushing so we never miss the sync event.
+      const waiter = navigator.onLine ? waitForSync(localId, 8000) : Promise.resolve(null)
+      await enqueue({ kind: 'create-note', localId, path, content, tags, metadata: {} })
+      void runOnce()
+      const synced = await waiter
+      if (synced) onCreated(synced)
+      else onQueued(optimistic(localId, path, content, tags))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setSaving(false)
@@ -158,23 +198,28 @@ export function Capture({
 
     try {
       const filename = memoFilename(mimeRef.current)
-      const file = new File([blob], filename, { type: mimeRef.current })
-      // 1. upload the blob → stored path
-      const uploaded = await uploadStorageFile(file)
-      // 2. create the note embedding the memo
-      const note = await createNote({
-        path: capturePath('voice'),
-        content: `![[${filename}]]`,
-        tags: ['capture/voice'],
-        metadata: {},
-      })
-      // 3. attach + kick off transcription (fills content/transcript async)
-      await addAttachment(note.id, {
-        path: uploaded.path,
+      const path = capturePath('voice')
+      const tags = ['capture/voice']
+      const content = `![[${filename}]]`
+      // Stash the audio bytes in IndexedDB so the memo survives offline/reload.
+      const arrayBuffer = await blob.arrayBuffer()
+      const blobId = await putBlob(arrayBuffer, mimeRef.current, filename)
+      const localId = newLocalId()
+      // Queue the 3-step chain (FIFO): create note → upload audio → link+transcribe.
+      const waiter = navigator.onLine ? waitForSync(localId, 10000) : Promise.resolve(null)
+      await enqueue({ kind: 'create-note', localId, path, content, tags, metadata: {} })
+      await enqueue({ kind: 'upload-attachment', blobId })
+      await enqueue({
+        kind: 'link-attachment',
+        noteLocalId: localId,
+        blobId,
         mimeType: 'audio/webm;codecs=opus',
         transcribe: true,
       })
-      onCreated(note)
+      void runOnce()
+      const synced = await waiter
+      if (synced) onCreated(synced)
+      else onQueued(optimistic(localId, path, content, tags))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setPhase('idle')

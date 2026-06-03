@@ -11,18 +11,24 @@ export function CaptureCard({ note }: { note: Note }) {
   const kind = captureKindOf(note)
   const linked = linkedEntities(note)
   const preview = previewText(note, 280)
+  // Optimistic, not-yet-synced captures carry a `local:` id (from the outbox).
+  // They aren't navigable yet and wear a small sync chip.
+  const pending = note.id.startsWith('local:')
 
   return (
     <article
-      className={`capture kind-${kind ?? 'text'}`}
-      onClick={() => nav(captureHref(note))}
-      style={{ cursor: 'pointer' }}
+      className={`capture kind-${kind ?? 'text'}${pending ? ' pending' : ''}`}
+      onClick={pending ? undefined : () => nav(captureHref(note))}
+      style={{ cursor: pending ? 'default' : 'pointer' }}
     >
       <span className="glyph">{captureGlyph(kind)}</span>
       <div className="capture-meta">
         <span className="kind">{kind === 'voice' ? 'voice' : kind === 'dream' ? 'dream' : 'note'}</span>
         <span>·</span>
         <span>{formatTime(note.createdAt)}</span>
+        {pending && (
+          <span className="sync-chip">{navigator.onLine ? 'saving…' : 'offline — queued'}</span>
+        )}
       </div>
       <div className="capture-body">
         <span className="capture-preview">{preview || '(no text)'}</span>

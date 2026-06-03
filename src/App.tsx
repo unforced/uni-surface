@@ -9,6 +9,8 @@ import { SearchPalette } from './components/SearchPalette'
 import { Capture } from './components/Capture'
 import { WeaveEditor } from './components/WeaveEditor'
 import { Toast } from './components/common'
+import { UpdateBanner } from './components/UpdateBanner'
+import { SyncBadge } from './components/SyncBadge'
 import type { Note } from './vault/types'
 import { Seed, SearchIcon, SunIcon, MoonIcon, PlusIcon } from './components/icons'
 
@@ -77,8 +79,16 @@ function Shell() {
     setCapturing(false)
     // Let any listening route refresh so the capture appears.
     window.dispatchEvent(new CustomEvent(CAPTURE_CREATED_EVENT, { detail: note }))
-    // Offer to weave it immediately.
+    // Offer to weave it immediately (needs a synced, server-side note).
     setWeaveNew(note)
+  }
+
+  // Offline / not-yet-synced capture: show it optimistically + reassure. No
+  // weave offer yet — weaving adds links, which need the note to exist server-side.
+  function onQueued(note: Note) {
+    setCapturing(false)
+    window.dispatchEvent(new CustomEvent(CAPTURE_CREATED_EVENT, { detail: note }))
+    flash(navigator.onLine ? 'Captured 🌱 — syncing' : 'Captured 🌱 — will sync when online')
   }
 
   // ⌘K / Ctrl-K opens search
@@ -130,6 +140,7 @@ function Shell() {
             <NavLink to="/browse">Browse</NavLink>
           </nav>
           <div className="topbar-spacer" />
+          <SyncBadge />
           <button className="capture-trigger" onClick={() => setCapturing(true)} title="New capture">
             <PlusIcon />
             <span>New capture</span>
@@ -154,8 +165,11 @@ function Shell() {
         <Outlet />
       </main>
 
+      <UpdateBanner />
       {search && <SearchPalette onClose={() => setSearch(false)} />}
-      {capturing && <Capture onClose={() => setCapturing(false)} onCreated={onCaptured} />}
+      {capturing && (
+        <Capture onClose={() => setCapturing(false)} onCreated={onCaptured} onQueued={onQueued} />
+      )}
       {weaveNew && (
         <WeaveEditor
           capture={weaveNew}

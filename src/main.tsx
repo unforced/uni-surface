@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './styles.css'
+import { startSyncEngine } from './vault/sync/engine'
 import { RequireConfig } from './App'
 import { Config } from './routes/Config'
 import { OAuthCallback } from './routes/OAuthCallback'
@@ -50,3 +51,7 @@ createRoot(document.getElementById('root')!).render(
     <RouterProvider router={router} />
   </StrictMode>,
 )
+
+// Drive the offline outbox: drain on load, on reconnect, on focus, and on a tick.
+// Idempotent, so StrictMode's double-invoke is harmless.
+startSyncEngine()

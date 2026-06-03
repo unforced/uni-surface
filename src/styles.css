@@ -1397,3 +1397,64 @@ button { font-family: inherit; cursor: pointer; }
 }
 .pc-update-current-summary { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 10px; line-height: 1.5; }
 .pc-update-current-body .markdown { font-size: 14px; line-height: 1.55; }
+
+/* ── Offline / sync (PWA) ── */
+
+/* Optimistic, not-yet-synced capture card: gently faded, not clickable. */
+.capture.pending { opacity: 0.72; }
+.capture.pending .glyph { animation: breathe 2.4s ease-in-out infinite; }
+.sync-chip {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--clay);
+  background: var(--terracotta-wash, rgba(192, 107, 74, 0.12));
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* Topbar sync badge — only visible when there's something to report. */
+.sync-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid var(--line, rgba(0,0,0,0.08));
+  background: var(--surface-2, var(--cream-2));
+  color: var(--ink-soft);
+  border-radius: 999px; padding: 4px 10px; margin-right: 6px;
+  cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+}
+.sync-badge:hover { color: var(--ink); }
+.sync-badge .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); }
+.sync-badge.syncing .sync-dot { background: var(--sage); animation: breathe 1.4s ease-in-out infinite; }
+.sync-badge.offline { cursor: default; }
+.sync-badge.offline .sync-dot { background: var(--ink-faint); }
+.sync-badge.stuck { color: var(--clay); border-color: var(--clay-soft); }
+.sync-badge.stuck .sync-dot { background: var(--clay); }
+
+/* "New version ready" / "offline ready" banner — calm, bottom-center. */
+.update-banner {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  z-index: 60; display: inline-flex; align-items: center; gap: 10px;
+  background: var(--surface, var(--paper));
+  border: 1px solid var(--line, rgba(0,0,0,0.1));
+  box-shadow: 0 8px 30px rgba(54, 48, 42, 0.16);
+  border-radius: 14px; padding: 10px 12px 10px 14px;
+  font-size: 14px; color: var(--ink);
+  animation: fade 0.25s ease;
+}
+.update-banner.subtle { color: var(--ink-soft); font-size: 13px; }
+.update-spark { font-size: 15px; }
+.update-text { margin-right: 2px; }
+.update-btn {
+  background: var(--clay); color: #fff; border: none;
+  border-radius: 9px; padding: 6px 14px; font-size: 13px; font-weight: 600;
+  cursor: pointer;
+}
+.update-btn:hover { background: var(--clay-soft); }
+.update-dismiss {
+  background: none; border: none; color: var(--ink-faint);
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.update-dismiss:hover { color: var(--ink); }
+
+@keyframes breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
