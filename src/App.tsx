@@ -20,9 +20,13 @@ export const CAPTURE_CREATED_EVENT = 'pv:capture-created'
 // Routes fire this to open the global capture modal hosted in the shell.
 export const OPEN_CAPTURE_EVENT = 'pv:open-capture'
 
-// Helper for routes to request the capture modal.
-export function openCapture() {
-  window.dispatchEvent(new CustomEvent(OPEN_CAPTURE_EVENT))
+// A surface a capture is answering — threads the reply back via `responds-to`.
+export type ReplyTarget = { id: string; label: string }
+
+// Helper for routes to request the capture modal. Pass a reply target to open
+// it in "reply" mode — the resulting capture links `responds-to` that surface.
+export function openCapture(replyTo?: ReplyTarget) {
+  window.dispatchEvent(new CustomEvent(OPEN_CAPTURE_EVENT, { detail: replyTo ?? null }))
 }
 
 // Guard: require a configured vault, else send to the config screen.
@@ -39,6 +43,8 @@ function Shell() {
   const { theme, toggle } = useTheme()
   const [search, setSearch] = useState(false)
   const [capturing, setCapturing] = useState(false)
+  // When capture is opened in reply mode, the surface being answered.
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
   // After a capture lands, offer to weave it (links) right away.
   const [weaveNew, setWeaveNew] = useState<Note | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -107,8 +113,13 @@ function Shell() {
   useEffect(() => setSearch(false), [loc.pathname])
 
   // Routes (e.g. Today's affordance) can open the capture modal via an event.
+  // The event detail optionally carries a reply target (surface being answered).
   useEffect(() => {
-    const onOpen = () => setCapturing(true)
+    const onOpen = (e: Event) => {
+      const target = (e as CustomEvent).detail as ReplyTarget | null
+      setReplyTo(target ?? null)
+      setCapturing(true)
+    }
     window.addEventListener(OPEN_CAPTURE_EVENT, onOpen)
     return () => window.removeEventListener(OPEN_CAPTURE_EVENT, onOpen)
   }, [])
@@ -168,7 +179,12 @@ function Shell() {
       <UpdateBanner />
       {search && <SearchPalette onClose={() => setSearch(false)} />}
       {capturing && (
-        <Capture onClose={() => setCapturing(false)} onCreated={onCaptured} onQueued={onQueued} />
+        <Capture
+          replyTo={replyTo}
+          onClose={() => { setCapturing(false); setReplyTo(null) }}
+          onCreated={onCaptured}
+          onQueued={onQueued}
+        />
       )}
       {weaveNew && (
         <WeaveEditor

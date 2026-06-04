@@ -360,6 +360,25 @@ export function linkedEntities(note: Note): LinkedEntity[] {
 // The relationship a woven page uses to cite a source capture (downward link).
 export const SOURCED_FROM = 'sourced-from'
 
+// The keystone of the conversational loop: a capture that answers a surface the
+// AI put in front of Aaron links `responds-to → surface`. Additive to the
+// sacred capture (only ever a link), and the thread the next Weaver pass reads.
+export const RESPONDS_TO = 'responds-to'
+
+// Replies threaded under a surface: captures with an inbound `responds-to` edge.
+export function repliesTo(surface: Note): NoteRef[] {
+  const out: NoteRef[] = []
+  const seen = new Set<string>()
+  for (const l of surface.links ?? []) {
+    if (l.targetId !== surface.id || l.relationship !== RESPONDS_TO) continue
+    const ref = l.sourceNote
+    if (!ref || seen.has(ref.id)) continue
+    seen.add(ref.id)
+    out.push(ref)
+  }
+  return out
+}
+
 // Downward citations: the captures a woven page's CURRENT synthesis is grounded
 // in — outgoing `sourced-from` links from the entity to captures. Curated and
 // mutable (they change as the synthesis matures), distinct from the permanent

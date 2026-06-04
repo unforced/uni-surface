@@ -1476,14 +1476,47 @@ button { font-family: inherit; cursor: pointer; }
 .morning-questions { font-size: 14.5px; line-height: 1.6; color: var(--ink); }
 .morning-questions .markdown p { margin: 7px 0; }
 .morning-quiet { color: var(--ink-soft); font-size: 14px; font-style: italic; }
+/* Each Open Inquiry question as its own answerable card. */
+.mq {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 13px 10px;
+  margin: 9px 0;
+  background: var(--surface);
+  transition: border-color .15s, box-shadow .15s;
+}
+.mq:hover { border-color: var(--clay-soft); box-shadow: 0 2px 12px rgba(192, 107, 74, 0.06); }
+.mq-body { font-size: 14px; line-height: 1.56; color: var(--ink); }
+.mq-body .markdown p { margin: 2px 0; }
+.mq-body a { color: var(--clay); border-bottom: 1px solid var(--terracotta-wash); }
+.mq-respond {
+  margin-top: 9px;
+  background: transparent; color: var(--clay);
+  border: 1px solid var(--clay-soft); border-radius: 8px;
+  padding: 4px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background .15s, color .15s;
+}
+.mq-respond:hover { background: var(--clay); color: #fff; }
+.mq-respond-arrow { font-size: 13px; line-height: 1; }
 .morning-foot { display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
 .morning-respond {
-  background: var(--clay); color: #fff; border: none; border-radius: 9px;
-  padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  background: transparent; color: var(--ink-soft); border: 1px solid var(--line);
+  border-radius: 9px; padding: 6px 13px; font-size: 12.5px; font-weight: 500; cursor: pointer;
 }
-.morning-respond:hover { background: var(--clay-soft); }
+.morning-respond:hover { border-color: var(--clay-soft); color: var(--clay); }
 .morning-now { font-size: 13px; color: var(--ink-soft); text-decoration: none; }
 .morning-now:hover { color: var(--clay); }
+/* "Replying to …" chip in the capture modal — this capture threads back. */
+.reply-chip {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--terracotta-wash);
+  border: 1px solid var(--clay-soft);
+  border-radius: 9px; padding: 7px 11px; margin-bottom: 14px;
+  font-size: 13px; color: var(--ink-soft);
+}
+.reply-chip strong { color: var(--clay); font-weight: 600; }
+.reply-chip-arrow { color: var(--clay); font-size: 14px; }
 
 /* ── Generic note view (/note/:id) ── */
 .note-wrap { max-width: 760px; margin: 0 auto; padding: 8px 0 60px; }
@@ -1497,6 +1530,23 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: 999px; padding: 1px 8px; color: var(--ink-soft);
 }
 .note-body { font-size: 15.5px; line-height: 1.68; color: var(--ink); }
+/* Replies thread on a surface (Open Inquiry / Now) — the conversational loop. */
+.note-replies { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 18px; }
+.note-replies h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+.nr-count { background: var(--terracotta-wash); color: var(--clay); border-radius: 999px; padding: 0 7px; font-size: 11px; letter-spacing: 0; }
+.nr-hint { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 12px; font-style: italic; }
+.nr-list { display: flex; flex-direction: column; gap: 9px; }
+.nr-item {
+  display: block; text-decoration: none;
+  border: 1px solid var(--line); border-left: 3px solid var(--clay-soft);
+  border-radius: 10px; padding: 9px 12px; background: var(--surface);
+  transition: border-color .15s, box-shadow .15s;
+}
+.nr-item:hover { border-color: var(--clay-soft); box-shadow: 0 2px 12px rgba(192, 107, 74, 0.06); }
+.nr-when { display: block; font-size: 11.5px; color: var(--clay); margin-bottom: 3px; }
+.nr-text { display: block; font-size: 13.5px; line-height: 1.5; color: var(--ink); }
+.nr-loading { font-size: 12.5px; color: var(--ink-faint); }
+
 .note-links { margin-top: 32px; border-top: 1px solid var(--line, rgba(0,0,0,0.08)); padding-top: 18px; }
 .note-links-group { margin-bottom: 16px; }
 .note-links-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); margin: 0 0 8px; }

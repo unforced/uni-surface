@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getNote } from '../vault/api'
+import { getNote, fetchCapturesByIds } from '../vault/api'
 import type { VaultLink } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { Loading, ErrorBanner, EmptyState } from '../components/common'
 import { BackIcon } from '../components/icons'
-import { entityName, noteHref, formatRelative } from '../vault/util'
+import { entityName, noteHref, captureHref, previewText, formatRelative, repliesTo, RESPONDS_TO } from '../vault/util'
 
 // The generic note view — the humble fallback for any note that isn't an
 // entity or a capture (Now, Open Inquiry, Jobs/*, Feedback/*, anything else).
@@ -27,15 +27,24 @@ export function NoteView() {
   }, [data, decoded])
 
   // Split graph links into outgoing / incoming, with the "other" note ref.
+  // Inbound `responds-to` edges are pulled out into a dedicated Replies thread.
   const { outgoing, incoming } = useMemo(() => {
     const out: VaultLink[] = []
     const inc: VaultLink[] = []
     for (const l of data?.links ?? []) {
       if (l.sourceId === data?.id) out.push(l)
-      else if (l.targetId === data?.id) inc.push(l)
+      else if (l.targetId === data?.id && l.relationship !== RESPONDS_TO) inc.push(l)
     }
     return { outgoing: out, incoming: inc }
   }, [data])
+
+  // The conversational loop made visible: captures that answered this surface.
+  const replyRefs = useMemo(() => (data ? repliesTo(data) : []), [data])
+  const replyIds = replyRefs.map((r) => r.id).join(',')
+  const replies = useAsync(async () => {
+    if (replyRefs.length === 0) return []
+    return fetchCapturesByIds(replyRefs.map((r) => r.id))
+  }, [replyIds])
 
   return (
     <div className="note-wrap">
@@ -75,6 +84,22 @@ export function NoteView() {
           <article className="note-body">
             <Markdown content={data.content ?? ''} />
           </article>
+
+          {replyRefs.length > 0 && (
+            <section className="note-replies">
+              <h3>Replies <span className="nr-count">{replyRefs.length}</span></h3>
+              <p className="nr-hint">Your answers, threaded back to what they responded to.</p>
+              <div className="nr-list">
+                {(replies.data ?? []).map((c) => (
+                  <Link key={c.id} to={captureHref(c)} className="nr-item">
+                    <span className="nr-when">{formatRelative(c.createdAt)}</span>
+                    <span className="nr-text">{previewText(c, 200) || '(no text)'}</span>
+                  </Link>
+                ))}
+                {replies.loading && <span className="nr-loading">Gathering replies…</span>}
+              </div>
+            </section>
+          )}
 
           {(outgoing.length > 0 || incoming.length > 0) && (
             <section className="note-links">

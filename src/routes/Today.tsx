@@ -124,7 +124,7 @@ export function Today() {
         {/* ── Main column: timeline spine ── */}
         <div>
           <MorningCard />
-          <button className="new-capture-card" onClick={openCapture}>
+          <button className="new-capture-card" onClick={() => openCapture()}>
             <span className="ncc-glyph"><PlusIcon /></span>
             <span className="ncc-text">
               <span className="ncc-title">New capture</span>

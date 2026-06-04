@@ -20,9 +20,28 @@ function section(content: string, heading: string): string {
   return lines.slice(start + 1, end).join('\n').trim()
 }
 
-// The morning surface on Today: the live Open Inquiry questions + a quiet link
-// into Now. The front-end of the daily tending loop — the first thing you see.
-// Renders nothing if neither note exists yet (graceful before the first weave).
+// Split "## This morning" into its individual prompts, each a block that opens
+// with a bold lead (**The work.** or the older **N. Title.** form). Returns the
+// raw markdown block + a short label (the bold lead) used as the reply target so
+// a response threads to the right prompt. Falls back to one block otherwise.
+function splitQuestions(body: string): { block: string; label: string }[] {
+  if (!body) return []
+  const blocks = body.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean)
+  const questions = blocks.filter((b) => /^\*\*/.test(b))
+  if (questions.length === 0) return body ? [{ block: body, label: 'this morning' }] : []
+  return questions.map((block) => {
+    const m = block.match(/^\*\*(.+?)\*\*/)
+    const inner = (m?.[1] ?? '').trim()
+    const label = inner.replace(/^\d+\.\s*/, '').replace(/\.$/, '') || 'this morning'
+    return { block, label }
+  })
+}
+
+// The morning surface on Today: the live Open Inquiry questions, each its own
+// card you can answer. The front-end of the daily tending loop — and the start
+// of the conversation: a "Respond" threads your capture back to that question
+// (responds-to), so the next weave can read the exchange. Renders nothing if
+// neither tending note exists yet (graceful before the first weave).
 export function MorningCard() {
   const { data } = useAsync(async () => {
     const [now, inquiry] = await Promise.allSettled([getNote('Now'), getNote('Open Inquiry')])
@@ -35,7 +54,7 @@ export function MorningCard() {
   if (!data || (!data.now && !data.inquiry)) return null
 
   const inquiryBody = data.inquiry?.content ?? ''
-  const morning = section(inquiryBody, 'This morning')
+  const questions = splitQuestions(section(inquiryBody, 'This morning'))
   const throughline = section(data.now?.content ?? '', 'The throughline')
 
   return (
@@ -50,17 +69,29 @@ export function MorningCard() {
         )}
       </div>
 
-      {morning ? (
+      {questions.length > 0 ? (
         <div className="morning-questions">
-          <Markdown content={morning} />
+          {questions.map((q, i) => (
+            <div className="mq" key={i}>
+              <div className="mq-body">
+                <Markdown content={q.block} />
+              </div>
+              <button
+                className="mq-respond"
+                onClick={() => openCapture({ id: 'Open Inquiry', label: q.label })}
+              >
+                Respond <span className="mq-respond-arrow">↩</span>
+              </button>
+            </div>
+          ))}
         </div>
       ) : data.inquiry ? (
         <p className="morning-quiet">No questions waiting — a quiet morning.</p>
       ) : null}
 
       <div className="morning-foot">
-        <button className="morning-respond" onClick={openCapture}>
-          Respond — capture a thought
+        <button className="morning-respond" onClick={() => openCapture()}>
+          Capture something else
         </button>
         {data.now && (
           <Link className="morning-now" to="/note/Now" title={throughline}>

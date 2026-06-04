@@ -1,10 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Note } from '../vault/types'
-import { capturePath, memoFilename } from '../vault/util'
+import { capturePath, memoFilename, RESPONDS_TO } from '../vault/util'
+import { linkCapture } from '../vault/api'
 import { enqueue, putBlob } from '../vault/sync/outbox'
 import { newLocalId } from '../vault/sync/db'
 import { runOnce } from '../vault/sync/engine'
 import { CloseIcon, TextGlyph, VoiceGlyph } from './icons'
+
+// A surface this capture is answering (e.g. a morning Open Inquiry question).
+type ReplyTarget = { id: string; label: string }
+
+// Thread an online-synced reply back to its surface. The `responds_to` metadata
+// is already on the note (set at create, survives offline); this adds the graph
+// edge so the surface can show its replies. Best-effort — never blocks capture.
+async function threadReply(synced: Note, replyTo: ReplyTarget | null | undefined) {
+  if (!replyTo) return
+  try {
+    await linkCapture(synced.id, replyTo.id, RESPONDS_TO)
+  } catch {
+    /* link is non-essential; the responds_to metadata still records the reply */
+  }
+}
 
 // "New capture" modal — text or voice, mirroring the Notes compose flow.
 //
@@ -40,9 +56,15 @@ function waitForSync(localId: string, timeoutMs: number): Promise<Note | null> {
   })
 }
 
-function optimistic(localId: string, path: string, content: string, tags: string[]): Note {
+function optimistic(
+  localId: string,
+  path: string,
+  content: string,
+  tags: string[],
+  metadata: Record<string, unknown> = {},
+): Note {
   const now = new Date().toISOString()
-  return { id: `local:${localId}`, path, content, tags, metadata: {}, createdAt: now, updatedAt: now }
+  return { id: `local:${localId}`, path, content, tags, metadata, createdAt: now, updatedAt: now }
 }
 
 const PREFERRED_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
@@ -69,6 +91,7 @@ export function Capture({
   onClose,
   onCreated,
   onQueued,
+  replyTo,
 }: {
   onClose: () => void
   // Called when a capture syncs to the vault while online — the host refreshes
@@ -77,7 +100,11 @@ export function Capture({
   // Called when a capture is saved offline / not yet synced — the host shows it
   // optimistically and flashes a "will sync" toast (no weave offer yet).
   onQueued: (note: Note) => void
+  // When present, this capture is a reply: it carries `responds_to` metadata and
+  // (once synced) a `responds-to` link back to the surface being answered.
+  replyTo?: ReplyTarget | null
 }) {
+  const replyMeta = replyTo ? { responds_to: replyTo.id } : {}
   const [mode, setMode] = useState<Mode>('choose')
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -119,11 +146,13 @@ export function Capture({
       const tags = ['capture/text']
       // Attach the waiter BEFORE flushing so we never miss the sync event.
       const waiter = navigator.onLine ? waitForSync(localId, 8000) : Promise.resolve(null)
-      await enqueue({ kind: 'create-note', localId, path, content, tags, metadata: {} })
+      await enqueue({ kind: 'create-note', localId, path, content, tags, metadata: replyMeta })
       void runOnce()
       const synced = await waiter
-      if (synced) onCreated(synced)
-      else onQueued(optimistic(localId, path, content, tags))
+      if (synced) {
+        await threadReply(synced, replyTo)
+        onCreated(synced)
+      } else onQueued(optimistic(localId, path, content, tags, replyMeta))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setSaving(false)
@@ -207,7 +236,7 @@ export function Capture({
       const localId = newLocalId()
       // Queue the 3-step chain (FIFO): create note → upload audio → link+transcribe.
       const waiter = navigator.onLine ? waitForSync(localId, 10000) : Promise.resolve(null)
-      await enqueue({ kind: 'create-note', localId, path, content, tags, metadata: {} })
+      await enqueue({ kind: 'create-note', localId, path, content, tags, metadata: replyMeta })
       await enqueue({ kind: 'upload-attachment', blobId })
       await enqueue({
         kind: 'link-attachment',
@@ -218,8 +247,10 @@ export function Capture({
       })
       void runOnce()
       const synced = await waiter
-      if (synced) onCreated(synced)
-      else onQueued(optimistic(localId, path, content, tags))
+      if (synced) {
+        await threadReply(synced, replyTo)
+        onCreated(synced)
+      } else onQueued(optimistic(localId, path, content, tags, replyMeta))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setPhase('idle')
@@ -245,6 +276,14 @@ export function Capture({
           </button>
         </div>
         <div className="panel-body">
+          {replyTo && (
+            <div className="reply-chip" title="This capture will thread back to what it answers">
+              <span className="reply-chip-arrow">↩</span>
+              <span className="reply-chip-text">
+                Replying to <strong>{replyTo.label}</strong>
+              </span>
+            </div>
+          )}
           {mode === 'choose' && (
             <div className="capture-modes">
               <button className="capture-mode" onClick={() => setMode('text')}>
