@@ -71,6 +71,9 @@ export function MorningCard() {
             What's alive now →
           </Link>
         )}
+        <Link className="morning-now" to="/note/The%20Arc">
+          The arc of your life →
+        </Link>
       </div>
     </section>
   )
