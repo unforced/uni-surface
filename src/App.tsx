@@ -148,6 +148,7 @@ function Shell() {
             <NavLink to="/" end>Today</NavLink>
             <NavLink to="/inbox">For You</NavLink>
             <NavLink to="/dev">Dev</NavLink>
+            <NavLink to="/writing">Writing</NavLink>
             <NavLink to="/weave" className={({ isActive }) => (isActive ? 'active nav-proposals' : 'nav-proposals')}>
               Weave
               {weaveCount ? <span className="nav-badge">{weaveCount}</span> : null}

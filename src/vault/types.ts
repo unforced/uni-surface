@@ -99,13 +99,29 @@ export const RELATIONSHIP_LABELS: Record<string, string> = {
   references: 'references',
 }
 
-// First entity type found on a note's tag list.
+// Specializations of `project`, housed in a domain (dev → build, writing →
+// piece). They inherit project's schema in the vault; in the UI they resolve to
+// `project` for typing/behavior, while `entitySubtypeOf` exposes the finer name.
+export const PROJECT_SUBTYPES = ['build', 'piece'] as const
+export type ProjectSubtype = (typeof PROJECT_SUBTYPES)[number]
+
+// First entity type found on a note's tag list (build/piece resolve to project).
 export function entityTypeOf(note: NoteRef | Note): EntityType | null {
   const tags = note.tags ?? []
   for (const t of ENTITY_TYPES) {
     if (tags.includes(t)) return t
   }
+  if (PROJECT_SUBTYPES.some((s) => tags.includes(s))) return 'project'
   return null
+}
+
+// The finer endeavor label for display: 'build' | 'piece', else the entity type.
+export function entitySubtypeOf(note: NoteRef | Note): string | null {
+  const tags = note.tags ?? []
+  for (const s of PROJECT_SUBTYPES) {
+    if (tags.includes(s)) return s
+  }
+  return entityTypeOf(note)
 }
 
 export type CaptureKind = 'text' | 'voice' | 'dream'
