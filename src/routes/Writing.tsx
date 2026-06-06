@@ -9,7 +9,7 @@ import { Loading, ErrorBanner } from '../components/common'
 // project-family entities) + the themes that thread them. Toward: the vault as
 // the source of truth, unforced.org statically generated from these notes.
 export function Writing() {
-  const pieces = useAsync(() => listNotes({ tag: 'writing', includeMetadata: true, limit: 300, sort: 'asc' }), [])
+  const pieces = useAsync(() => listNotes({ tag: 'writing', includeMetadata: true, limit: 300, sort: 'desc' }), [])
   const themes = useAsync(() => listNotes({ tag: 'writing/theme', limit: 100, sort: 'asc' }), [])
 
   const pieceEntities = (pieces.data ?? []).filter((n) => entityTypeOf(n) === 'project')
