@@ -1584,6 +1584,15 @@ button { font-family: inherit; cursor: pointer; }
 .lc-rel { font-size: 11px; color: var(--ink-faint); }
 
 /* Note plumbing: copyable path/id + inline edit/delete (any note view). */
+.pc-keep-alias {
+  display: inline-block; margin-top: 6px;
+  background: var(--terracotta-wash); color: var(--clay);
+  border: 1px solid var(--clay-soft); border-radius: 7px;
+  padding: 3px 9px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.pc-keep-alias:hover { background: var(--clay); color: #fff; }
+
 .note-controls { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 16px; }
 .nc-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .nc-field {

@@ -620,6 +620,26 @@ function CreateEntityCard({
                   placeholder="Entity name"
                 />
                 <span className="pc-field-hint">Saves to {spec.entity.path}</span>
+                {/* Promote a fuller name while keeping the original as an alias —
+                    one click, since that's the common correction (Dr. Bob → Bob
+                    Whitehouse, keep "Dr. Bob"). */}
+                {name.trim() &&
+                  baseName.trim() &&
+                  name.trim() !== baseName &&
+                  !aliases.some((a) => a.toLowerCase() === baseName.toLowerCase()) && (
+                    <button
+                      type="button"
+                      className="pc-keep-alias"
+                      onClick={() =>
+                        setSpec((s) => ({
+                          ...s,
+                          entity: { ...s.entity, aliases: dedupeAliases([...s.entity.aliases, baseName]) },
+                        }))
+                      }
+                    >
+                      + keep “{baseName}” as an alias
+                    </button>
+                  )}
               </div>
 
               <div className="pc-field">
