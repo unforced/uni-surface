@@ -103,6 +103,7 @@ export const ENTITY_PARENT_TAG = 'entity'
 export const RELATIONSHIP_LABELS: Record<string, string> = {
   'relates-to': 'relates to',
   mentions: 'mentions',
+  develops: 'develops',
   at: 'at',
   'part-of': 'part of',
   practices: 'practices',

@@ -40,7 +40,7 @@ import { CaptureView } from './CaptureView'
 import { UpdateEntityCard } from './UpdateEntityCard'
 import { LinkIcon, PlusIcon } from './icons'
 
-const RELATIONSHIPS = ['relates-to', 'mentions', 'at', 'part-of', 'practices', 'uses', 'references']
+const RELATIONSHIPS = ['relates-to', 'mentions', 'develops', 'at', 'part-of', 'practices', 'uses', 'references']
 
 // One supporting capture, with its selected/deselected state and an OPTIONAL
 // per-row relationship override. When `relationship` is undefined the row links

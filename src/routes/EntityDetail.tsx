@@ -9,6 +9,7 @@ import { Loading, ErrorBanner, EmptyState, Toast } from '../components/common'
 import { UnlinkedMentions } from '../components/UnlinkedMentions'
 import { NoteControls } from '../components/NoteControls'
 import { RenameEntity } from '../components/RenameEntity'
+import { MergeEntity } from '../components/MergeEntity'
 import { BackIcon } from '../components/icons'
 import {
   entityName,
@@ -21,6 +22,7 @@ import {
   sourceCaptures,
   structuralConnections,
   groundedIn,
+  developsRefs,
   formatRelative,
 } from '../vault/util'
 import { RELATIONSHIP_LABELS } from '../vault/types'
@@ -59,6 +61,19 @@ export function EntityDetail() {
     return settled.filter((n): n is Note => n !== null)
   }, [captureIds])
 
+  // The contribution flow: captures that DEVELOP this endeavor (working notes).
+  const developRefs = useMemo(() => (data ? developsRefs(data) : []), [data])
+  const developIds = developRefs.map((r) => r.id).join(',')
+  const developNotes = useAsync(async () => {
+    if (developRefs.length === 0) return [] as Note[]
+    const settled = await Promise.all(
+      developRefs.slice(0, 100).map((r) => getNote(r.id).catch(() => null)),
+    )
+    return settled.filter((n): n is Note => n !== null)
+  }, [developIds])
+
+  const isEndeavor = data ? entityTypeOf(data) === 'project' : false
+
   return (
     <div className="page">
       <Link to="/browse" className="back-link">
@@ -74,6 +89,9 @@ export function EntityDetail() {
 
           <div className="detail-cols">
             <div>
+              {isEndeavor && (
+                <WorkingNotes notes={developNotes.data ?? []} loading={developNotes.loading} />
+              )}
               {/* A piece (essay/book) is a standalone work — its content is the
                   main event. Skip the capture-timeline scaffolding and lead with
                   the writing + its publish meta. Other entities keep "Across time". */}
@@ -159,6 +177,21 @@ function GroundedIn({ entity, captureNotes }: { entity: Note; captureNotes: Note
   )
 }
 
+// The "working notes" strand on an endeavor — captures that DEVELOP it (the
+// contribution flow). The raw thinking accreting toward its next state; what the
+// Weaver reads to pick up the work.
+function WorkingNotes({ notes, loading }: { notes: Note[]; loading: boolean }) {
+  if (!loading && notes.length === 0) return null
+  return (
+    <div className="working-notes">
+      <div className="section-title">Working notes</div>
+      <p className="wn-hint">The raw thinking moving this forward — captures developing it.</p>
+      {loading && notes.length === 0 && <Loading label="…" />}
+      {notes.length > 0 && <CaptureTimeline notes={notes} />}
+    </div>
+  )
+}
+
 // A piece's publish line — stage, date, and a link out to the live post.
 function PieceMeta({ entity }: { entity: Note }) {
   const m = entity.metadata ?? {}
@@ -184,6 +217,7 @@ function EntityHeader({ entity, onSaved }: { entity: Note; onSaved: () => void }
   const nav = useNavigate()
   const [editing, setEditing] = useState(false)
   const [renaming, setRenaming] = useState(false)
+  const [merging, setMerging] = useState(false)
   const [draft, setDraft] = useState(String(entity.metadata?.summary ?? ''))
   const [saving, setSaving] = useState(false)
   const fields = TYPE_FIELDS[type ?? ''] ?? []
@@ -209,6 +243,9 @@ function EntityHeader({ entity, onSaved }: { entity: Note; onSaved: () => void }
         <button className="rename-trigger" onClick={() => setRenaming(true)} title="Rename / fix spelling">
           rename
         </button>
+        <button className="rename-trigger" onClick={() => setMerging(true)} title="Merge into another entity">
+          merge
+        </button>
       </h1>
 
       {renaming && (
@@ -218,6 +255,17 @@ function EntityHeader({ entity, onSaved }: { entity: Note; onSaved: () => void }
           onRenamed={(newPath) => {
             setRenaming(false)
             nav(`/entity/${encodeURIComponent(newPath)}`)
+          }}
+        />
+      )}
+
+      {merging && (
+        <MergeEntity
+          entity={entity}
+          onClose={() => setMerging(false)}
+          onMerged={(targetPath) => {
+            setMerging(false)
+            nav(`/entity/${encodeURIComponent(targetPath)}`)
           }}
         />
       )}

@@ -7,7 +7,7 @@ import { entityName, previewText } from '../vault/util'
 import { DetectedEntities } from './DetectedEntities'
 import { CloseIcon, LinkIcon, PlusIcon } from './icons'
 
-const RELATIONSHIPS = ['relates-to', 'mentions', 'at', 'part-of', 'practices', 'uses', 'references']
+const RELATIONSHIPS = ['relates-to', 'mentions', 'develops', 'at', 'part-of', 'practices', 'uses', 'references']
 
 // Default path folder per type (matches the vault's layout).
 const TYPE_FOLDER: Record<EntityType, string> = {

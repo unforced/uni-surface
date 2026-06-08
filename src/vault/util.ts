@@ -365,6 +365,28 @@ export const SOURCED_FROM = 'sourced-from'
 // sacred capture (only ever a link), and the thread the next Weaver pass reads.
 export const RESPONDS_TO = 'responds-to'
 
+// The contribution flow: a capture that DEVELOPS an endeavor (build/piece/
+// project) — a feature idea, a decision, a paragraph, raw thinking that moves it
+// forward. Distinct from a passing `mentions`: this is the working material the
+// endeavor is accreting toward its next state (and what the Weaver reads to pick
+// up the work). Additive to the sacred capture (only a link).
+export const DEVELOPS = 'develops'
+
+// Captures that develop this endeavor — its "working notes" strand (inbound
+// `develops` edges), newest first by the ref's createdAt when available.
+export function developsRefs(entity: Note): NoteRef[] {
+  const out: NoteRef[] = []
+  const seen = new Set<string>()
+  for (const l of entity.links ?? []) {
+    if (l.targetId !== entity.id || l.relationship !== DEVELOPS) continue
+    const ref = l.sourceNote
+    if (!ref || seen.has(ref.id)) continue
+    seen.add(ref.id)
+    out.push(ref)
+  }
+  return out
+}
+
 // Replies threaded under a surface: captures with an inbound `responds-to` edge.
 export function repliesTo(surface: Note): NoteRef[] {
   const out: NoteRef[] = []
