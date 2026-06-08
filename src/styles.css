@@ -793,6 +793,14 @@ button { font-family: inherit; cursor: pointer; }
 .unlinked-open:hover .pc-cap-preview { color: var(--clay); }
 .unlinked-date { font-size: 11.5px; color: var(--ink-faint); }
 .unlinked-link-btn { flex: none; padding: 7px 16px; font-size: 13px; align-self: center; }
+.unlinked-row-actions { display: flex; align-items: center; gap: 6px; align-self: center; }
+.unlinked-dismiss {
+  flex: none; width: 26px; height: 26px; border-radius: 7px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-faint);
+  font-size: 17px; line-height: 1; cursor: pointer; transition: color .15s, border-color .15s;
+}
+.unlinked-dismiss:hover:not(:disabled) { color: #c0584a; border-color: #c0584a; }
+.unlinked-dismiss:disabled { opacity: 0.5; cursor: default; }
 .unlinked-actions { margin-top: 14px; }
 
 /* ── Detected entities (capture→entity, in the weave editor) ───────── */
