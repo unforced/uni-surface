@@ -7,7 +7,6 @@ import { EntityIndexProvider } from './vault/EntityIndex'
 import { useTheme } from './components/useTheme'
 import { SearchPalette } from './components/SearchPalette'
 import { Capture } from './components/Capture'
-import { WeaveEditor } from './components/WeaveEditor'
 import { Toast } from './components/common'
 import { UpdateBanner } from './components/UpdateBanner'
 import { SyncBadge } from './components/SyncBadge'
@@ -48,8 +47,6 @@ function Shell() {
   const [capturing, setCapturing] = useState(false)
   // When capture is opened in reply mode, the surface being answered.
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null)
-  // After a capture lands, offer to weave it (links) right away.
-  const [weaveNew, setWeaveNew] = useState<Note | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   // Combined "to tend" count for the Weave nav badge: pending proposals +
   // unwoven captures.
@@ -102,8 +99,9 @@ function Shell() {
     setCapturing(false)
     // Let any listening route refresh so the capture appears.
     window.dispatchEvent(new CustomEvent(CAPTURE_CREATED_EVENT, { detail: note }))
-    // Offer to weave it immediately (needs a synced, server-side note).
-    setWeaveNew(note)
+    // No weave prompt: capture stays frictionless (it never existed for voice
+    // anyway) — linking is the Weaver's job. Weave-by-hand lives in the Weave tab.
+    flash('Captured 🌱')
   }
 
   // Offline / not-yet-synced capture: show it optimistically + reassure. No
@@ -218,19 +216,6 @@ function Shell() {
           onClose={() => { setCapturing(false); setReplyTo(null) }}
           onCreated={onCaptured}
           onQueued={onQueued}
-        />
-      )}
-      {weaveNew && (
-        <WeaveEditor
-          capture={weaveNew}
-          onClose={() => {
-            setWeaveNew(null)
-            flash('Captured 🌱')
-          }}
-          onWoven={() => {
-            setWeaveNew(null)
-            flash('Woven into the graph 🌿')
-          }}
         />
       )}
       {toast && <Toast message={toast} />}
