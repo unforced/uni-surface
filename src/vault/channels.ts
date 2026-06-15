@@ -21,8 +21,16 @@ export function isOutbound(n: Note): boolean {
 
 // Who spoke. metadata.sender is the truth ('aaron' or '<octopus>/<arm>');
 // legacy messages without one fall back to direction (inbound = Aaron).
+//
+// The parachute-channel built-in chat stamps inbound (human) messages with the
+// generic sender "operator" — it only knows "whoever holds the channel:send
+// token," not the operator's handle. On this personal vault that operator IS
+// Aaron, so normalize "operator" → "aaron": a message I send from the channel
+// chat then renders as mine (right, no chip), identical to the notes this UI
+// writes (sender: "aaron"). One store, one identity for me across both surfaces.
 export function senderOf(n: Note): string {
   const s = String(n.metadata?.sender ?? '').trim()
+  if (s === 'operator') return 'aaron'
   if (s) return s
   return isOutbound(n) ? 'uni' : 'aaron'
 }
