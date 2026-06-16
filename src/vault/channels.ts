@@ -19,8 +19,12 @@ export function isOutbound(n: Note): boolean {
   return (n.tags ?? []).some((t) => t.endsWith('/outbound'))
 }
 
-// Who spoke. metadata.sender is the truth ('aaron' or '<octopus>/<arm>');
-// legacy messages without one fall back to direction (inbound = Aaron).
+// Who spoke. metadata.sender is the truth ('aaron', 'operator', or
+// '<octopus>/<arm>'); legacy messages without one fall back to direction.
+// NOTE: self-vs-other (which side a bubble sits on) is decided by DIRECTION, not
+// by matching this string — see `mine` in Channels. So a human message stamped
+// "operator" by the channel chat or "aaron" by this UI both render as mine, and
+// the sender here only labels the chip on the other (outbound/arm) side.
 export function senderOf(n: Note): string {
   const s = String(n.metadata?.sender ?? '').trim()
   if (s) return s

@@ -166,7 +166,10 @@ export function Channels() {
         )}
         {ordered.map((m) => {
           const sender = senderOf(m)
-          const mine = sender === 'aaron'
+          // Self-vs-other by DIRECTION, not by sender name: inbound = the human
+          // (me), outbound = a session/arm. Robust to whatever handle stamped the
+          // note (the channel chat uses "operator", this UI uses "aaron").
+          const mine = !isOutbound(m)
           const kind = String(m.metadata?.kind ?? '')
           const isCard = kind === 'report' || kind === 'dispatch'
           const spark = kind === 'dispatch' ? sparkOf(m) : null
