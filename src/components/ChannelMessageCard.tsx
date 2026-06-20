@@ -13,7 +13,7 @@ import {
   sendChannelMessage,
 } from '../vault/channels'
 
-// An arm's name as a small colored chip — same palette slot everywhere it
+// An agent's name as a small colored chip — same palette slot everywhere it
 // speaks (Channels bubbles, Home feed cards). Full sender rides in the title.
 export function SenderChip({ sender }: { sender: string }) {
   return (

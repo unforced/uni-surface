@@ -1,15 +1,24 @@
-// Channel-message + arm-roster helpers, shared by Channels (the live thread),
-// Home (the unseen-message feed), and Arms (the roster). One source of truth
-// for sender attribution, the Uni/Arms roster shape, and the local seen-state.
+// Agent-message + agent-roster helpers, shared by Channels (the live thread),
+// Home (the unseen-message feed), and Agents (the roster). One source of truth
+// for sender attribution, the agent roster shape, and the local seen-state.
+//
+// Tag note: agent tags are stored WITH a literal `#` (`#agent/message`,
+// `#agent/definition`) — a filter built as `agent/message` returns nothing.
+// All the constants below carry the `#`; never hand-build these strings.
 
 import { createNote, listNotes } from './api'
 import type { Note, NoteRef } from './types'
 import { SOURCED_FROM } from './util'
 
-export const CH_TAG = '#channel-message'
+// The conversation stream. Querying the parent `#agent/message` returns its
+// /inbound + /outbound descendants by tag inheritance. `#channel-message` is the
+// pre-rename tag — kept read-only so historical threads still render.
+export const MSG_TAG = '#agent/message'
+export const LEGACY_MSG_TAG = '#channel-message'
 export const CHANNEL_KEY = 'pv.channel'
-// Arm mandate notes (tag uni-state) live here; their metadata names the channel.
-export const ARMS_PREFIX = 'Uni/Arms/'
+// The agent roster: each agent is an `#agent/definition` note at Agents/<name>,
+// its body the system prompt and its metadata the config.
+export const AGENT_DEF_TAG = '#agent/definition'
 
 export const tsOf = (n: Note) => String(n.metadata?.ts ?? n.createdAt ?? '')
 
@@ -56,64 +65,80 @@ export function sparkOf(n: Note): NoteRef | null {
   return null
 }
 
-// ---- Arm roster ----
+// ---- Agent roster ----
 
-// One arm from the roster: its mandate note at Uni/Arms/<name>.
-export interface Arm {
-  name: string // path leaf — the display name
+// One agent from the roster: its `#agent/definition` note at Agents/<name>. The
+// body is the system prompt; the metadata is the runtime config. An agent's
+// channel IS its name (messages stamp metadata.channel = the agent name).
+export interface Agent {
+  name: string // = path leaf = channel
   channel: string
-  status: string // active | birthing | dormant | '' (unknown)
+  status: string // enabled | disabled | '' (unknown)
+  backend: string // programmatic | channel
+  mode: string // single-threaded | multi-threaded
+  model: string // e.g. claude-opus-4-8
   summary: string
+  prompt: string // the system prompt (note body)
+  defId: string // the definition note id — links to its threads
 }
 
-export function armOf(n: Note): Arm {
+export function agentOf(n: Note): Agent {
   const leaf = n.path.split('/').pop() ?? n.path
+  const name = String(n.metadata?.name ?? '').trim() || leaf
   return {
-    name: leaf,
-    channel: String(n.metadata?.channel ?? '').trim() || leaf,
+    name,
+    channel: name,
     status: String(n.metadata?.status ?? '').trim(),
+    backend: String(n.metadata?.backend ?? '').trim(),
+    mode: String(n.metadata?.mode ?? '').trim(),
+    model: String(n.metadata?.model ?? '').trim(),
     summary: String(n.metadata?.summary ?? '').trim(),
+    prompt: n.content ?? '',
+    defId: n.id,
   }
 }
 
 // status → dot class (reuses the entity status-dot palette: green/amber/gray).
 export function statusDotClass(status: string): string {
-  if (status === 'active') return 'status-active'
+  if (status === 'enabled' || status === 'active') return 'status-active'
   if (status === 'birthing') return 'status-incubating'
-  return 'status-dormant'
+  return 'status-dormant' // disabled | dormant | unknown
 }
 
-// The full arm roster, deduped by channel and sorted. Callers decide how to
-// handle failure (Channels falls back to the current channel + 'uni').
-export async function fetchArmRoster(): Promise<Arm[]> {
-  const notes = await listNotes({ pathPrefix: ARMS_PREFIX, includeMetadata: true, limit: 100 })
-  const seen = new Set<string>()
-  const arms: Arm[] = []
-  for (const n of notes) {
-    const a = armOf(n)
-    if (!a.channel || seen.has(a.channel)) continue
-    seen.add(a.channel)
-    arms.push(a)
-  }
-  arms.sort((a, b) => a.channel.localeCompare(b.channel))
-  return arms
+// The full agent roster, sorted by name. Reads `#agent/definition` notes —
+// body (system prompt) included so the roster can expand each agent inline.
+// Callers decide how to handle failure (Channels falls back to a bare 'uni').
+export async function fetchAgentRoster(): Promise<Agent[]> {
+  const notes = await listNotes({
+    tag: AGENT_DEF_TAG,
+    includeMetadata: true,
+    includeContent: true,
+    limit: 100,
+  })
+  const agents = notes.map(agentOf).filter((a) => a.name)
+  agents.sort((a, b) => a.name.localeCompare(b.name))
+  return agents
 }
 
 // ---- Messages ----
 
-// All recent arm→Aaron messages across every channel, newest first — ONE query
-// for Home's feed and the Arms roster (never one query per arm). Queries the
-// parent tag and filters client-side so legacy notes without the /outbound
-// subtag still count.
+// All recent agent→Aaron messages across every channel, newest first — for
+// Home's feed and the Agents roster (never one query per agent). Queries the
+// parent tag and filters client-side so notes without the /outbound subtag
+// still count. Reads the new `#agent/message` tag and the legacy
+// `#channel-message` tag, merging both so historical threads still appear.
 export async function listOutboundMessages(limit = 300): Promise<Note[]> {
-  const notes = await listNotes({
-    tag: CH_TAG,
-    includeMetadata: true,
-    includeContent: true,
-    sort: 'desc',
-    limit,
-  })
-  return notes.filter(isOutbound)
+  const opts = { includeMetadata: true, includeContent: true, sort: 'desc' as const, limit }
+  const [fresh, legacy] = await Promise.all([
+    listNotes({ tag: MSG_TAG, ...opts }),
+    listNotes({ tag: LEGACY_MSG_TAG, ...opts }).catch(() => [] as Note[]),
+  ])
+  const byId = new Map<string, Note>()
+  for (const n of [...fresh, ...legacy]) byId.set(n.id, n)
+  return [...byId.values()]
+    .filter(isOutbound)
+    .sort((a, b) => tsOf(b).localeCompare(tsOf(a)))
+    .slice(0, limit)
 }
 
 // channel → latest outbound ts (ISO), from one already-fetched message list.
@@ -129,12 +154,14 @@ export function lastOutboundByChannel(notes: Note[]): Map<string, string> {
 }
 
 // Write Aaron's message into a channel (the inbound half of the conversation).
+// New-model path + tags: `channel/<agent>/<uuid>`, `#agent/message[/inbound]`.
 export function sendChannelMessage(channel: string, body: string): Promise<Note> {
   const ts = new Date().toISOString()
+  const uuid = crypto.randomUUID()
   return createNote({
-    path: `Channels/${channel}/${ts.replace(/[:.]/g, '-')}`,
+    path: `channel/${channel}/${uuid}`,
     content: body,
-    tags: [CH_TAG, `${CH_TAG}/inbound`],
+    tags: [MSG_TAG, `${MSG_TAG}/inbound`],
     metadata: { channel, direction: 'inbound', sender: 'aaron', ts },
   })
 }

@@ -6,7 +6,8 @@ import { Loading, ErrorBanner, EmptyState } from '../components/common'
 import { Markdown } from '../components/Markdown'
 import { formatRelative } from '../vault/util'
 import {
-  fetchArmRoster,
+  type Agent,
+  fetchAgentRoster,
   listOutboundMessages,
   lastOutboundByChannel,
   statusDotClass,
@@ -14,13 +15,14 @@ import {
   seenMap,
 } from '../vault/channels'
 
-// The window into Uni itself — the system's self-state (Uni/Now), the arms
-// roster with each arm's mandate, channel, pulse (last outbound) and unread
-// count, and the recent session log. Read-only: arms are born and retired
-// elsewhere; this is the window, not the lever.
-export function Arms() {
-  const roster = useAsync(() => fetchArmRoster(), [])
-  // ONE query for all outbound messages; per-arm stats are grouped client-side.
+// The window into Uni itself — the system's self-state (Uni/Now), the agent
+// roster (every #agent/definition with its config, channel, pulse and unread
+// count), and the recent session log. This is mission control: the one place
+// that shows the whole octopus at a glance. Read-only — agents are created and
+// edited in the agent app; this is the window, not the lever.
+export function Agents() {
+  const roster = useAsync(() => fetchAgentRoster(), [])
+  // ONE query for all outbound messages; per-agent stats are grouped client-side.
   const outbound = useAsync(() => listOutboundMessages(), [])
   // The system's working picture of itself + the recent log — cheap queries
   // (one note by path; a handful by prefix).
@@ -30,6 +32,7 @@ export function Arms() {
     [],
   )
   const [nowOpen, setNowOpen] = useState(false)
+  const [openPrompt, setOpenPrompt] = useState<string | null>(null)
 
   const lastBy = useMemo(() => lastOutboundByChannel(outbound.data ?? []), [outbound.data])
 
@@ -51,7 +54,7 @@ export function Arms() {
       <div className="page-head">
         <div className="kicker">the octopus</div>
         <h1>Uni</h1>
-        <p className="sub">What Uni is up to — its self-state, every arm with its mandate and channel, and the recent log.</p>
+        <p className="sub">What Uni is up to — its self-state, every agent with its config and channel, and the recent log.</p>
       </div>
 
       {now.data && (
@@ -76,17 +79,18 @@ export function Arms() {
       {roster.loading && <Loading label="Reading the roster…" />}
       {Boolean(roster.error) && <ErrorBanner error={roster.error} onRetry={roster.reload} />}
       {roster.data && roster.data.length === 0 && (
-        <EmptyState art="🐙" title="No arms yet">
-          When arm mandate notes land under <code>Uni/Arms/</code>, they'll gather here.
+        <EmptyState art="🐙" title="No agents yet">
+          When <code>#agent/definition</code> notes land under <code>Agents/</code>, they'll gather here.
         </EmptyState>
       )}
 
       <div className="arms-list">
-        {(roster.data ?? []).map((a) => {
+        {(roster.data ?? []).map((a: Agent) => {
           const last = lastBy.get(a.channel)
           const unread = unreadBy.get(a.channel) ?? 0
+          const promptOpen = openPrompt === a.defId
           return (
-            <div key={a.channel} className="arm-row">
+            <div key={a.defId || a.channel} className="arm-row">
               <div className="arm-main">
                 <div className="arm-name">
                   <span className={`status-dot ${statusDotClass(a.status)}`} />
@@ -94,6 +98,21 @@ export function Arms() {
                   {a.status && <span className="arm-status">{a.status}</span>}
                 </div>
                 {a.summary && <div className="arm-summary">{a.summary}</div>}
+                <div className="arm-config">
+                  {a.backend && <span className="arm-tag">{a.backend}</span>}
+                  {a.mode && <span className="arm-tag">{a.mode}</span>}
+                  {a.model && <span className="arm-tag">{a.model}</span>}
+                  {a.prompt && (
+                    <button className="arm-tag arm-tag-btn" onClick={() => setOpenPrompt(promptOpen ? null : a.defId)}>
+                      {promptOpen ? 'hide prompt' : 'prompt'}
+                    </button>
+                  )}
+                </div>
+                {promptOpen && (
+                  <div className="arm-prompt">
+                    <Markdown content={a.prompt} />
+                  </div>
+                )}
               </div>
               <div className="arm-side">
                 <Link className="arm-chan" to="/channels" onClick={() => selectChannel(a.channel)}>

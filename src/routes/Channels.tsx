@@ -7,25 +7,25 @@ import { Markdown } from '../components/Markdown'
 import { SenderChip } from '../components/ChannelMessageCard'
 import { noteHref } from '../vault/util'
 import {
-  CH_TAG,
+  MSG_TAG,
   CHANNEL_KEY,
-  type Arm,
+  type Agent,
   tsOf,
   senderOf,
   sparkOf,
   statusDotClass,
-  fetchArmRoster,
+  fetchAgentRoster,
   sendChannelMessage,
   selectChannel,
   isOutbound,
   markSeen,
 } from '../vault/channels'
 
-// The channels organ — talking to the Claude session through the vault, live.
-// A message is a #channel-message note; sending writes an inbound note, the
-// connected session replies with an outbound one, and both arrive in realtime
-// over the SSE subscription (no polling). Aaron's messages right, arms' left —
-// each arm with its own sender chip; reports and dispatches render as cards.
+// The channels organ — talking to the agent through the vault, live.
+// A message is an #agent/message note; sending writes an inbound note, the
+// agent replies with an outbound one, and both arrive in realtime over the SSE
+// subscription (no polling). Aaron's messages right, the agent's left — each
+// with its own sender chip; reports and dispatches render as cards.
 export function Channels() {
   const [channel, setChannel] = useState(() => localStorage.getItem(CHANNEL_KEY) || 'uni')
   const [msgs, setMsgs] = useState<Map<string, Note>>(new Map())
@@ -35,14 +35,14 @@ export function Channels() {
   const [picker, setPicker] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
-  // The arm roster for the switcher. Failure is fine — the choices fall back to
-  // the current channel + 'uni' and the free-text "other…" path still works.
-  const roster = useAsync(() => fetchArmRoster().catch(() => [] as Arm[]), [])
+  // The agent roster for the switcher. Failure is fine — the choices fall back
+  // to the current channel + 'uni' and the free-text "other…" path still works.
+  const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
 
   useEffect(() => {
     const inChannel = (n: Note) => String(n.metadata?.channel ?? '') === channel
     const unsub = subscribeNotes(
-      { tag: CH_TAG },
+      { tag: MSG_TAG },
       {
         onSnapshot: (notes) => {
           const m = new Map<string, Note>()
@@ -71,14 +71,17 @@ export function Channels() {
 
   // What the switcher shows: the roster, with 'uni' (and whatever channel is
   // currently selected) always present even when the query came back empty.
-  const armChoices = useMemo(() => {
-    const arms = [...(roster.data ?? [])]
+  const agentChoices = useMemo(() => {
+    const agents = [...(roster.data ?? [])]
     for (const c of [channel, 'uni']) {
-      if (!arms.some((a) => a.channel === c)) {
-        arms.unshift({ name: c, channel: c, status: '', summary: '' })
+      if (!agents.some((a) => a.channel === c)) {
+        agents.unshift({
+          name: c, channel: c, status: '',
+          backend: '', mode: '', model: '', summary: '', prompt: '', defId: '',
+        })
       }
     }
-    return arms
+    return agents
   }, [roster.data, channel])
 
   const ordered = useMemo(
@@ -91,7 +94,7 @@ export function Channels() {
   }, [ordered.length])
 
   // Reading the thread counts as seeing its arm messages — keeps Home's feed
-  // and the Arms unread counts honest.
+  // and the Agents unread counts honest.
   useEffect(() => {
     markSeen(ordered.filter(isOutbound).map((n) => n.id))
   }, [ordered])
@@ -136,7 +139,7 @@ export function Channels() {
               <>
                 <div className="overflow-scrim" onClick={() => setPicker(false)} />
                 <div className="chan-pop">
-                  {armChoices.map((a) => (
+                  {agentChoices.map((a) => (
                     <button
                       key={a.channel}
                       className={`chan-item${a.channel === channel ? ' on' : ''}`}

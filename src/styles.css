@@ -1794,6 +1794,11 @@ button { font-family: inherit; cursor: pointer; }
 .arm-name { display: flex; align-items: center; gap: 9px; font-family: var(--serif); font-size: 16.5px; color: var(--ink); }
 .arm-status { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
 .arm-summary { margin-top: 3px; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.arm-config { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; }
+.arm-tag { font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink-faint); background: var(--paper-2, rgba(0,0,0,0.04)); border: 1px solid var(--rule, rgba(0,0,0,0.08)); border-radius: 5px; padding: 1px 6px; }
+.arm-tag-btn { cursor: pointer; font-family: inherit; }
+.arm-tag-btn:hover { color: var(--clay); }
+.arm-prompt { margin-top: 9px; padding: 10px 12px; border-left: 2px solid var(--rule, rgba(0,0,0,0.12)); font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
 .arm-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 .arm-chan { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--clay); text-decoration: none; }
 .arm-chan:hover { text-decoration: underline; }
