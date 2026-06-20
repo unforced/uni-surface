@@ -12,11 +12,11 @@ import { ChannelMessageCard, ReportCard } from '../components/ChannelMessageCard
 import { Loading, ErrorBanner, EmptyState, Toast } from '../components/common'
 import { formatRelative } from '../vault/util'
 import {
-  type Arm,
+  type Agent,
   tsOf,
   senderOf,
   senderLabel,
-  fetchArmRoster,
+  fetchAgentRoster,
   listOutboundMessages,
   lastOutboundByChannel,
   seenMap,
@@ -62,7 +62,7 @@ export function Home() {
     async () => ({ msgs: await listOutboundMessages(), seen: seenMap() }),
     [],
   )
-  const roster = useAsync(() => fetchArmRoster().catch(() => [] as Arm[]), [])
+  const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
 
   // Re-pull when a capture lands/syncs (answers drop surfaces) or a proposal is
   // decided elsewhere.
@@ -155,7 +155,7 @@ export function Home() {
     const lastBy = lastOutboundByChannel(outbound)
     const dayAgo = new Date(now - 24 * 3600000).toISOString()
     const quiet = (roster.data ?? []).filter(
-      (a) => a.status === 'active' && (lastBy.get(a.channel) ?? '') < dayAgo,
+      (a) => a.status === 'enabled' && (lastBy.get(a.channel) ?? '') < dayAgo,
     )
     return { waiting, latestReport, quiet }
   }, [messages.data, openSurfaces, pendingProposals, unseenMsgs, roster.data, now])
@@ -168,7 +168,7 @@ export function Home() {
       <div className="page-head">
         <div className="kicker">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         <h1>Home</h1>
-        <p className="sub">One stream — what the vault and the arms are holding for you.</p>
+        <p className="sub">One stream — what the vault and the agents are holding for you.</p>
       </div>
 
       {/* Attention ledger */}
@@ -223,7 +223,7 @@ export function Home() {
       )}
       {!loading && feed.length === 0 && !firstError && (
         <EmptyState art="🌾" title="The stream is clear">
-          Nothing new from the arms, no proposals pending. When something wants your eyes, it
+          Nothing new from the agents, no proposals pending. When something wants your eyes, it
           lands here.
         </EmptyState>
       )}

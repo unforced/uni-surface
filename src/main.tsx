@@ -1,13 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import './styles.css'
 import { startSyncEngine } from './vault/sync/engine'
 import { RequireConfig } from './App'
 import { Config } from './routes/Config'
 import { OAuthCallback } from './routes/OAuthCallback'
 import { Home } from './routes/Home'
-import { Arms } from './routes/Arms'
+import { Agents } from './routes/Agents'
 import { Today } from './routes/Today'
 import { Inbox } from './routes/Inbox'
 import { Dev } from './routes/Dev'
@@ -45,7 +45,8 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <Home /> },
         { path: 'today', element: <Today /> },
-        { path: 'arms', element: <Arms /> },
+        { path: 'agents', element: <Agents /> },
+        { path: 'arms', element: <Navigate to="/agents" replace /> },
         { path: 'inbox', element: <Inbox /> },
         { path: 'dev', element: <Dev /> },
         { path: 'writing', element: <Writing /> },
