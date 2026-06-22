@@ -7,7 +7,11 @@ import { Markdown } from '../components/Markdown'
 import { formatRelative } from '../vault/util'
 import {
   type Agent,
+  type AgentJob,
   fetchAgentRoster,
+  fetchAgentJobs,
+  jobsByAgent,
+  describeCron,
   listOutboundMessages,
   lastOutboundByChannel,
   statusDotClass,
@@ -25,6 +29,9 @@ export function Agents() {
   const roster = useAsync(() => fetchAgentRoster(), [])
   // ONE query for all outbound messages; per-agent stats are grouped client-side.
   const outbound = useAsync(() => listOutboundMessages(), [])
+  // Scheduled jobs (#agent/job), grouped by their target agent. Soft-fail: a
+  // missing Schedules layer shouldn't blank the roster.
+  const jobs = useAsync(() => fetchAgentJobs().catch(() => [] as AgentJob[]), [])
   // The system's working picture of itself + the recent log — cheap queries
   // (one note by path; a handful by prefix).
   const now = useAsync(() => getNote('Uni/Now'), [])
@@ -36,6 +43,7 @@ export function Agents() {
   const [openPrompt, setOpenPrompt] = useState<string | null>(null)
 
   const lastBy = useMemo(() => lastOutboundByChannel(outbound.data ?? []), [outbound.data])
+  const jobsBy = useMemo(() => jobsByAgent(jobs.data ?? []), [jobs.data])
 
   // channel → outbound messages Aaron hasn't seen yet (Home/Channels mark seen).
   const unreadBy = useMemo(() => {
@@ -90,6 +98,7 @@ export function Agents() {
           const last = lastBy.get(a.channel)
           const unread = unreadBy.get(a.channel) ?? 0
           const promptOpen = openPrompt === a.defId
+          const sched = jobsBy.get(a.channel) ?? []
           return (
             <div key={a.defId || a.channel} className="arm-row">
               <div className="arm-main">
@@ -112,6 +121,29 @@ export function Agents() {
                 {promptOpen && (
                   <div className="arm-prompt">
                     <Markdown content={a.prompt} />
+                  </div>
+                )}
+                {sched.length > 0 && (
+                  <div className="arm-sched">
+                    {sched.map((j) => (
+                      <div key={j.id} className="arm-sched-row" title={j.cron}>
+                        <span className="arm-sched-cron">
+                          ⏱ {describeCron(j.cron)}
+                          {j.tz && <span className="arm-sched-tz"> · {j.tz}</span>}
+                        </span>
+                        <span className={`arm-sched-state ${j.enabled ? 'on' : 'off'}`}>
+                          {j.enabled ? 'enabled' : 'paused'}
+                        </span>
+                        {j.lastStatus && (
+                          <span
+                            className={`arm-sched-last ${j.lastStatus.startsWith('error') ? 'err' : 'ok'}`}
+                          >
+                            last: {j.lastStatus}
+                            {j.lastRunAt && ` · ${formatRelative(j.lastRunAt)}`}
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

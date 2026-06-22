@@ -128,6 +128,90 @@ export async function fetchAgentRoster(): Promise<Agent[]> {
   return agents
 }
 
+// ---- Schedules (#agent/job) ----
+
+// A scheduled job: the runner injects this note's content as an inbound message
+// to `agent` on its cron. Body = the message; metadata = the schedule + health.
+// Full contract: Uni/Reference/Agent Jobs (#agent-job scheduling).
+export const JOB_TAG = '#agent/job'
+
+export interface AgentJob {
+  jobId: string
+  agent: string // target agent (the routing key — agent || channel)
+  cron: string
+  tz: string
+  enabled: boolean
+  lastRunAt: string
+  lastStatus: string // 'ok' | 'error: …' | '' (never run)
+  message: string // note body — what the runner delivers each fire
+  path: string
+  id: string
+  updatedAt: string
+}
+
+export function agentJobOf(n: Note): AgentJob {
+  const m = n.metadata ?? {}
+  return {
+    jobId: String(m.jobId ?? '').trim() || (n.path.split('/').pop() ?? ''),
+    agent: noteAgentKey(n),
+    cron: String(m.cron ?? '').trim(),
+    tz: String(m.tz ?? '').trim(),
+    enabled: String(m.enabled ?? '') === 'true',
+    lastRunAt: String(m.lastRunAt ?? '').trim(),
+    lastStatus: String(m.lastStatus ?? '').trim(),
+    message: n.content ?? '',
+    path: n.path,
+    id: n.id,
+    updatedAt: n.updatedAt ?? n.createdAt ?? '',
+  }
+}
+
+// Every scheduled job, across all agents. Group with jobsByAgent.
+export async function fetchAgentJobs(): Promise<AgentJob[]> {
+  const notes = await listNotes({
+    tag: JOB_TAG,
+    includeMetadata: true,
+    includeContent: true,
+    limit: 100,
+  })
+  return notes.map(agentJobOf).filter((j) => j.agent)
+}
+
+export function jobsByAgent(jobs: AgentJob[]): Map<string, AgentJob[]> {
+  const m = new Map<string, AgentJob[]>()
+  for (const j of jobs) {
+    const arr = m.get(j.agent) ?? []
+    arr.push(j)
+    m.set(j.agent, arr)
+  }
+  return m
+}
+
+// Best-effort human gloss of a 5-field numeric cron (min hour dom month dow).
+// Falls back to the raw expression for anything it doesn't confidently match —
+// honest over clever. Mirrors the runner's v1 cron (numeric, Sunday=0).
+export function describeCron(cron: string): string {
+  const f = cron.trim().split(/\s+/)
+  if (f.length !== 5) return cron
+  const [min, hour, dom, mon, dow] = f
+  const clock = (() => {
+    const hh = Number(hour)
+    const mm = Number(min)
+    if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh > 23 || mm > 59) return null
+    const ap = hh < 12 ? 'am' : 'pm'
+    const h12 = hh % 12 === 0 ? 12 : hh % 12
+    return `${h12}:${String(mm).padStart(2, '0')}${ap}`
+  })()
+  if (dom === '*' && mon === '*' && clock) {
+    if (dow === '*') return `daily at ${clock}`
+    if (dow === '1-5') return `weekdays at ${clock}`
+  }
+  if (/^\*\/\d+$/.test(min) && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return `every ${min.slice(2)} min`
+  }
+  return cron
+}
+
 // ---- Messages ----
 
 // All recent agent→Aaron messages across every channel, newest first — for

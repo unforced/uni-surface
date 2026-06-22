@@ -1799,6 +1799,15 @@ button { font-family: inherit; cursor: pointer; }
 .arm-tag-btn { cursor: pointer; font-family: inherit; }
 .arm-tag-btn:hover { color: var(--clay); }
 .arm-prompt { margin-top: 9px; padding: 10px 12px; border-left: 2px solid var(--rule, rgba(0,0,0,0.12)); font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
+.arm-sched { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
+.arm-sched-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-faint); }
+.arm-sched-cron { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.arm-sched-tz { color: var(--ink-faint); }
+.arm-sched-state { font-size: 10.5px; letter-spacing: 0.02em; border-radius: 5px; padding: 1px 6px; border: 1px solid var(--rule, rgba(0,0,0,0.08)); }
+.arm-sched-state.on { color: var(--moss, #4a7); }
+.arm-sched-state.off { color: var(--ink-faint); }
+.arm-sched-last.ok { color: var(--ink-faint); }
+.arm-sched-last.err { color: var(--clay, #b5503c); }
 .arm-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 .arm-chan { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--clay); text-decoration: none; }
 .arm-chan:hover { text-decoration: underline; }
