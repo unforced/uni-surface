@@ -155,6 +155,13 @@ export function lastOutboundByChannel(notes: Note[]): Map<string, string> {
 
 // Write Aaron's message into a channel (the inbound half of the conversation).
 // New-model path + tags: `channel/<agent>/<uuid>`, `#agent/message[/inbound]`.
+//
+// Routing key migration (expand→contract): the note routing key is moving
+// `channel` → `agent`. We dual-carry both keys — `agent` is the destination,
+// `channel` stays until the daemon flips its inbound trigger to
+// `has_metadata:["agent"]` and drops the `channel` write. The `channel` param
+// IS the agent name, so `agent: channel`. An EMPTY `agent` would make the agent
+// deaf after the trigger flip — always populate it.
 export function sendChannelMessage(channel: string, body: string): Promise<Note> {
   const ts = new Date().toISOString()
   const uuid = crypto.randomUUID()
@@ -162,7 +169,7 @@ export function sendChannelMessage(channel: string, body: string): Promise<Note>
     path: `channel/${channel}/${uuid}`,
     content: body,
     tags: [MSG_TAG, `${MSG_TAG}/inbound`],
-    metadata: { channel, direction: 'inbound', sender: 'aaron', ts },
+    metadata: { agent: channel, channel, direction: 'inbound', sender: 'aaron', ts },
   })
 }
 

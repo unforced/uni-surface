@@ -1741,8 +1741,8 @@ button { font-family: inherit; cursor: pointer; }
 .hm-ledger-line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .hm-waiting { font-weight: 600; color: var(--ink); }
 .hm-reported { color: var(--ink-soft); }
-.hm-arms { margin-left: auto; font-size: 12.5px; color: var(--clay); text-decoration: none; }
-.hm-arms:hover { text-decoration: underline; }
+.hm-agents { margin-left: auto; font-size: 12.5px; color: var(--clay); text-decoration: none; }
+.hm-agents:hover { text-decoration: underline; }
 .hm-quiet { margin-top: 4px; font-size: 12px; font-style: italic; color: var(--ink-faint); }
 
 /* Filter chips: All / For You / Weave / Channels. */

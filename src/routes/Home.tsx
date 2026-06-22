@@ -185,7 +185,7 @@ export function Home() {
               {formatRelative(tsOf(ledger.latestReport))}
             </span>
           )}
-          <Link className="hm-arms" to="/arms">arms →</Link>
+          <Link className="hm-agents" to="/agents">agents →</Link>
         </div>
         {ledger.quiet.map((a) => (
           <div key={a.channel} className="hm-quiet">{a.channel}: quiet today</div>
