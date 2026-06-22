@@ -275,6 +275,36 @@ export function isValidTz(tz: string): boolean {
   }
 }
 
+// A job id slug — the runner's rule (alphanumeric, dash, underscore).
+export const isValidJobId = (s: string) => /^[a-zA-Z0-9_-]+$/.test(s.trim())
+
+// Create a scheduled job for an agent: writes an #agent/job note at the
+// convention path. The runner picks it up on its next tick. Caller validates
+// (slug, cron, tz) first — a direct write bypasses the daemon's validateJob.
+export async function createAgentJob(params: {
+  agent: string
+  jobId: string
+  cron: string
+  tz: string
+  message: string
+}): Promise<Note> {
+  const { agent, jobId, cron, tz, message } = params
+  return createNote({
+    path: `Channels/${agent}/jobs/${jobId.trim()}`,
+    content: message.trim(),
+    tags: [JOB_TAG],
+    metadata: {
+      jobId: jobId.trim(),
+      channel: agent, // dual-carry the legacy routing key alongside `agent`
+      agent,
+      cron: cron.trim(),
+      tz: tz.trim(),
+      enabled: 'true',
+      createdAt: new Date().toISOString(),
+    },
+  })
+}
+
 // ---- Messages ----
 
 // All recent agent→Aaron messages across every channel, newest first — for

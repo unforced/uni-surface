@@ -14,8 +14,10 @@ import {
   describeCron,
   setJobEnabled,
   updateJobSchedule,
+  createAgentJob,
   isValidCron,
   isValidTz,
+  isValidJobId,
   listOutboundMessages,
   lastOutboundByChannel,
   statusDotClass,
@@ -52,6 +54,14 @@ export function Agents() {
   const [editTz, setEditTz] = useState('')
   const [busyJob, setBusyJob] = useState<string | null>(null)
   const [schedErr, setSchedErr] = useState<string | null>(null)
+  // Create-schedule: which agent's form is open, its draft fields, error, busy.
+  const [addingFor, setAddingFor] = useState<string | null>(null)
+  const [newJobId, setNewJobId] = useState('')
+  const [newCron, setNewCron] = useState('')
+  const [newTz, setNewTz] = useState('America/Denver')
+  const [newMsg, setNewMsg] = useState('')
+  const [addErr, setAddErr] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   async function toggleJob(j: AgentJob) {
     setBusyJob(j.id)
@@ -87,6 +97,53 @@ export function Agents() {
       await jobs.reload()
     } finally {
       setBusyJob(null)
+    }
+  }
+  function startAddJob(agentName: string) {
+    setAddingFor(agentName)
+    setNewJobId('')
+    setNewCron('')
+    setNewTz('America/Denver')
+    setNewMsg('')
+    setAddErr(null)
+  }
+  async function submitAddJob(agentName: string) {
+    if (!isValidJobId(newJobId)) {
+      setAddErr('id: letters, numbers, dash, underscore only')
+      return
+    }
+    if ((jobsBy.get(agentName) ?? []).some((j) => j.jobId === newJobId.trim())) {
+      setAddErr('a schedule with that id already exists for this agent')
+      return
+    }
+    if (!isValidCron(newCron)) {
+      setAddErr('cron must be 5 numeric fields: min hour day-of-month month day-of-week')
+      return
+    }
+    if (!isValidTz(newTz)) {
+      setAddErr('unknown timezone — use an IANA name like America/Denver (or leave blank)')
+      return
+    }
+    if (!newMsg.trim()) {
+      setAddErr('message: the text the runner delivers to the agent each fire')
+      return
+    }
+    setAddErr(null)
+    setCreating(true)
+    try {
+      await createAgentJob({
+        agent: agentName,
+        jobId: newJobId,
+        cron: newCron,
+        tz: newTz,
+        message: newMsg,
+      })
+      setAddingFor(null)
+      await jobs.reload()
+    } catch (e) {
+      setAddErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -250,6 +307,62 @@ export function Agents() {
                       )
                     })}
                   </div>
+                )}
+                {addingFor === a.channel ? (
+                  <div className="arm-sched-add">
+                    <div className="arm-sched-add-fields">
+                      <input
+                        className="arm-sched-input id"
+                        value={newJobId}
+                        onChange={(e) => setNewJobId(e.target.value)}
+                        placeholder="id (e.g. weave)"
+                        aria-label="job id"
+                      />
+                      <input
+                        className="arm-sched-input"
+                        value={newCron}
+                        onChange={(e) => setNewCron(e.target.value)}
+                        placeholder="min hr dom mon dow"
+                        aria-label="cron expression"
+                      />
+                      <input
+                        className="arm-sched-input tz"
+                        value={newTz}
+                        onChange={(e) => setNewTz(e.target.value)}
+                        placeholder="America/Denver"
+                        aria-label="timezone"
+                      />
+                    </div>
+                    <textarea
+                      className="arm-sched-msg"
+                      value={newMsg}
+                      onChange={(e) => setNewMsg(e.target.value)}
+                      placeholder="message the runner delivers to the agent each fire…"
+                      rows={2}
+                      aria-label="scheduled message"
+                    />
+                    <div className="arm-sched-add-row">
+                      <button
+                        className="arm-sched-btn"
+                        disabled={creating}
+                        onClick={() => submitAddJob(a.channel)}
+                      >
+                        {creating ? '…' : 'create'}
+                      </button>
+                      <button
+                        className="arm-sched-btn ghost"
+                        disabled={creating}
+                        onClick={() => setAddingFor(null)}
+                      >
+                        cancel
+                      </button>
+                      {addErr && <span className="arm-sched-err">{addErr}</span>}
+                    </div>
+                  </div>
+                ) : (
+                  <button className="arm-sched-addbtn" onClick={() => startAddJob(a.channel)}>
+                    + schedule
+                  </button>
                 )}
               </div>
               <div className="arm-side">
