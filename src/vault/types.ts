@@ -21,7 +21,8 @@ export interface VaultLink {
 
 export interface NoteMetadata {
   summary?: string
-  // Entity lifecycle, plus proposal lifecycle (pending/approved/rejected).
+  // Entity lifecycle, proposal lifecycle (pending/approved/rejected), and
+  // agent-definition status (enabled/disabled).
   status?:
     | 'active'
     | 'incubating'
@@ -30,6 +31,8 @@ export interface NoteMetadata {
     | 'pending'
     | 'approved'
     | 'rejected'
+    | 'enabled'
+    | 'disabled'
   role?: string
   relation?: 'friend' | 'family' | 'collaborator' | 'influence'
   kind?: string

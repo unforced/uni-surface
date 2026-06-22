@@ -136,7 +136,7 @@ export function updateAgentPrompt(defId: string, prompt: string): Promise<Note> 
 }
 
 // Set an agent's status (enabled | disabled) via its definition metadata.
-export function setAgentStatus(defId: string, status: string): Promise<Note> {
+export function setAgentStatus(defId: string, status: 'enabled' | 'disabled'): Promise<Note> {
   return patchNote(defId, { metadata: { status } })
 }
 
