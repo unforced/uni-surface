@@ -9,7 +9,7 @@ import {
   senderColorClass,
   tsOf,
   markSeen,
-  selectChannel,
+  agentHref,
   sendChannelMessage,
   noteAgentKey,
 } from '../vault/channels'
@@ -72,7 +72,7 @@ function ReplyRow({ channel }: { channel: string }) {
           {sent ? 'Sent ↩ Reply again' : 'Reply ↩'}
         </button>
       )}
-      <Link className="cm-thread" to="/channels" onClick={() => selectChannel(channel)}>
+      <Link className="cm-thread" to={agentHref(channel)}>
         open thread →
       </Link>
     </div>
@@ -103,7 +103,7 @@ function CardBase({ note, report }: { note: Note; report: boolean }) {
           </span>
         )}
         {channel && (
-          <Link className="cm-chan" to="/channels" onClick={() => selectChannel(channel)}>
+          <Link className="cm-chan" to={agentHref(channel)}>
             #{channel}
           </Link>
         )}

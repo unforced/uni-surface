@@ -19,7 +19,7 @@ import {
   listOutboundMessages,
   lastOutboundByChannel,
   statusDotClass,
-  selectChannel,
+  agentHref,
   seenMap,
   noteAgentKey,
 } from '../vault/channels'
@@ -253,7 +253,7 @@ export function Agents() {
                 )}
               </div>
               <div className="arm-side">
-                <Link className="arm-chan" to="/channels" onClick={() => selectChannel(a.channel)}>
+                <Link className="arm-chan" to={agentHref(a.channel)}>
                   #{a.channel}
                   {unread > 0 && <span className="arm-unread">{unread}</span>}
                 </Link>

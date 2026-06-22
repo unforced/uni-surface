@@ -334,6 +334,11 @@ export function selectChannel(channel: string) {
   localStorage.setItem(CHANNEL_KEY, channel)
 }
 
+// The canonical URL for an agent's conversation. One agent ↔ one channel, so the
+// agent name is the whole key (single-threaded agents have one thread, addressed
+// by name; the thread note back-links its definition via metadata.definition).
+export const agentHref = (name: string) => `/agent/${encodeURIComponent(name)}`
+
 // ---- Seen-state (local only — which arm messages Aaron's feed has shown) ----
 
 const SEEN_KEY = 'pv.channelSeen'

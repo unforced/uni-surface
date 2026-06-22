@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import type { Note } from '../vault/types'
 import { subscribeNotes } from '../vault/sse'
 import { useAsync } from '../vault/useAsync'
@@ -20,6 +20,7 @@ import {
   isOutbound,
   markSeen,
   noteAgentKey,
+  agentHref,
 } from '../vault/channels'
 
 // The channels organ — talking to the agent through the vault, live.
@@ -28,7 +29,21 @@ import {
 // subscription (no polling). Aaron's messages right, the agent's left — each
 // with its own sender chip; reports and dispatches render as cards.
 export function Channels() {
-  const [channel, setChannel] = useState(() => localStorage.getItem(CHANNEL_KEY) || 'uni')
+  // `/agent/:name` addresses one agent's conversation; the bare `/channels`
+  // route falls back to the last-selected channel. The route param is the source
+  // of truth when present.
+  const { name: routeName } = useParams<{ name: string }>()
+  const navigate = useNavigate()
+  const [channel, setChannel] = useState(() => routeName || localStorage.getItem(CHANNEL_KEY) || 'uni')
+  useEffect(() => {
+    if (routeName && routeName !== channel) {
+      setMsgs(new Map())
+      setLive(false)
+      setChannel(routeName)
+      selectChannel(routeName)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeName])
   const [msgs, setMsgs] = useState<Map<string, Note>>(new Map())
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -115,10 +130,9 @@ export function Channels() {
   function pickChannel(c: string) {
     setPicker(false)
     if (!c || c === channel) return
-    selectChannel(c)
-    setMsgs(new Map())
-    setLive(false)
-    setChannel(c)
+    // Navigate to the canonical per-agent URL; the routeName effect resets the
+    // transcript and switches the live subscription.
+    navigate(agentHref(c))
   }
 
   // Escape hatch for a channel that has no arm note (yet).

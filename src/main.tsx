@@ -54,6 +54,7 @@ const router = createBrowserRouter(
         { path: 'arc', element: <Arc /> },
         { path: 'time/:window', element: <Time /> },
         { path: 'channels', element: <Channels /> },
+        { path: 'agent/:name', element: <Channels /> },
         { path: 'weave', element: <Weave /> },
         // Back-compat: the old Proposals route now redirects into Weave.
         { path: 'proposals', element: <Proposals /> },
