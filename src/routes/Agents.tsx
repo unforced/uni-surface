@@ -15,6 +15,8 @@ import {
   setJobEnabled,
   updateJobSchedule,
   createAgentJob,
+  updateAgentPrompt,
+  setAgentStatus,
   isValidCron,
   isValidTz,
   isValidJobId,
@@ -62,6 +64,11 @@ export function Agents() {
   const [newMsg, setNewMsg] = useState('')
   const [addErr, setAddErr] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  // Definition editing: which agent's prompt is open in the editor, its draft.
+  const [editDef, setEditDef] = useState<string | null>(null)
+  const [defDraft, setDefDraft] = useState('')
+  const [savingDef, setSavingDef] = useState(false)
+  const [defErr, setDefErr] = useState<string | null>(null)
 
   async function toggleJob(j: AgentJob) {
     setBusyJob(j.id)
@@ -146,6 +153,41 @@ export function Agents() {
       setCreating(false)
     }
   }
+  function startEditDef(a: Agent) {
+    setOpenPrompt(a.defId)
+    setEditDef(a.defId)
+    setDefDraft(a.prompt)
+    setDefErr(null)
+  }
+  async function saveDef(a: Agent) {
+    if (!defDraft.trim()) {
+      setDefErr('prompt cannot be empty')
+      return
+    }
+    if (
+      !confirm(
+        `Edit ${a.name}'s system prompt?\n\nThis changes how the agent behaves on its next run.`,
+      )
+    )
+      return
+    setSavingDef(true)
+    setDefErr(null)
+    try {
+      await updateAgentPrompt(a.defId, defDraft)
+      setEditDef(null)
+      await roster.reload()
+    } catch (e) {
+      setDefErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSavingDef(false)
+    }
+  }
+  async function toggleStatus(a: Agent) {
+    const next = a.status === 'enabled' ? 'disabled' : 'enabled'
+    if (!confirm(`Set ${a.name} to ${next}?`)) return
+    await setAgentStatus(a.defId, next)
+    await roster.reload()
+  }
 
   const lastBy = useMemo(() => lastOutboundByChannel(outbound.data ?? []), [outbound.data])
   const jobsBy = useMemo(() => jobsByAgent(jobs.data ?? []), [jobs.data])
@@ -222,10 +264,53 @@ export function Agents() {
                       {promptOpen ? 'hide prompt' : 'prompt'}
                     </button>
                   )}
+                  {a.defId && a.status && (
+                    <button className="arm-tag arm-tag-btn" onClick={() => toggleStatus(a)}>
+                      {a.status === 'enabled' ? 'disable' : 'enable'}
+                    </button>
+                  )}
                 </div>
                 {promptOpen && (
                   <div className="arm-prompt">
-                    <Markdown content={a.prompt} />
+                    {editDef === a.defId ? (
+                      <div className="arm-prompt-edit">
+                        <textarea
+                          className="arm-prompt-textarea"
+                          value={defDraft}
+                          onChange={(e) => setDefDraft(e.target.value)}
+                          rows={Math.min(28, Math.max(8, defDraft.split('\n').length + 1))}
+                          spellCheck
+                          aria-label={`${a.name} system prompt`}
+                        />
+                        {defErr && <span className="arm-sched-err">{defErr}</span>}
+                        <div className="arm-sched-add-row">
+                          <button
+                            className="arm-sched-btn"
+                            disabled={savingDef}
+                            onClick={() => saveDef(a)}
+                          >
+                            {savingDef ? 'saving…' : 'save prompt'}
+                          </button>
+                          <button
+                            className="arm-sched-btn ghost"
+                            disabled={savingDef}
+                            onClick={() => {
+                              setEditDef(null)
+                              setDefErr(null)
+                            }}
+                          >
+                            cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Markdown content={a.prompt} />
+                        <button className="arm-prompt-editbtn" onClick={() => startEditDef(a)}>
+                          edit prompt
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
                 {sched.length > 0 && (

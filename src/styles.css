@@ -1823,6 +1823,10 @@ button { font-family: inherit; cursor: pointer; }
 .arm-sched-input.id { width: 110px; }
 .arm-sched-msg { font-size: 12px; font-family: inherit; line-height: 1.5; color: var(--ink); background: var(--paper, #fff); border: 1px solid var(--rule, rgba(0,0,0,0.16)); border-radius: 5px; padding: 5px 7px; resize: vertical; }
 .arm-sched-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.arm-prompt-editbtn { margin-top: 8px; font-size: 11px; font-family: inherit; cursor: pointer; color: var(--ink-faint); background: none; border: 1px dashed var(--rule, rgba(0,0,0,0.16)); border-radius: 5px; padding: 2px 9px; }
+.arm-prompt-editbtn:hover { color: var(--clay); border-color: var(--clay, #b5503c); }
+.arm-prompt-edit { display: flex; flex-direction: column; gap: 7px; }
+.arm-prompt-textarea { font-size: 12.5px; font-family: var(--mono, ui-monospace, monospace); line-height: 1.55; color: var(--ink); background: var(--paper, #fff); border: 1px solid var(--rule, rgba(0,0,0,0.16)); border-radius: 6px; padding: 8px 10px; resize: vertical; }
 .arm-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 .arm-chan { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--clay); text-decoration: none; }
 .arm-chan:hover { text-decoration: underline; }

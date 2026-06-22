@@ -128,6 +128,18 @@ export async function fetchAgentRoster(): Promise<Agent[]> {
   return agents
 }
 
+// Edit an agent's system prompt — the body of its `#agent/definition` note.
+// High blast radius: it changes how the agent behaves on its next run, so
+// callers should confirm first.
+export function updateAgentPrompt(defId: string, prompt: string): Promise<Note> {
+  return patchNote(defId, { content: prompt })
+}
+
+// Set an agent's status (enabled | disabled) via its definition metadata.
+export function setAgentStatus(defId: string, status: string): Promise<Note> {
+  return patchNote(defId, { metadata: { status } })
+}
+
 // ---- Schedules (#agent/job) ----
 
 // A scheduled job: the runner injects this note's content as an inbound message
