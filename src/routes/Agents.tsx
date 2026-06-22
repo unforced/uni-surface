@@ -12,6 +12,10 @@ import {
   fetchAgentJobs,
   jobsByAgent,
   describeCron,
+  setJobEnabled,
+  updateJobSchedule,
+  isValidCron,
+  isValidTz,
   listOutboundMessages,
   lastOutboundByChannel,
   statusDotClass,
@@ -41,6 +45,50 @@ export function Agents() {
   )
   const [nowOpen, setNowOpen] = useState(false)
   const [openPrompt, setOpenPrompt] = useState<string | null>(null)
+  // Schedule editing: which job is open in the inline editor, its draft fields,
+  // and which job has a write in flight (disables its buttons).
+  const [editJob, setEditJob] = useState<string | null>(null)
+  const [editCron, setEditCron] = useState('')
+  const [editTz, setEditTz] = useState('')
+  const [busyJob, setBusyJob] = useState<string | null>(null)
+  const [schedErr, setSchedErr] = useState<string | null>(null)
+
+  async function toggleJob(j: AgentJob) {
+    setBusyJob(j.id)
+    try {
+      await setJobEnabled(j.id, !j.enabled)
+      await jobs.reload()
+    } finally {
+      setBusyJob(null)
+    }
+  }
+  function startEditJob(j: AgentJob) {
+    setEditJob(j.id)
+    setEditCron(j.cron)
+    setEditTz(j.tz)
+    setSchedErr(null)
+  }
+  async function saveEditJob(j: AgentJob) {
+    // Gate client-side: a direct vault write skips the daemon's validateJob, so a
+    // bad cron/tz would be silently dropped by the runner.
+    if (!isValidCron(editCron)) {
+      setSchedErr('cron must be 5 numeric fields: min hour day-of-month month day-of-week')
+      return
+    }
+    if (!isValidTz(editTz)) {
+      setSchedErr('unknown timezone — use an IANA name like America/Denver (or leave blank)')
+      return
+    }
+    setSchedErr(null)
+    setBusyJob(j.id)
+    try {
+      await updateJobSchedule(j.id, editCron, editTz)
+      setEditJob(null)
+      await jobs.reload()
+    } finally {
+      setBusyJob(null)
+    }
+  }
 
   const lastBy = useMemo(() => lastOutboundByChannel(outbound.data ?? []), [outbound.data])
   const jobsBy = useMemo(() => jobsByAgent(jobs.data ?? []), [jobs.data])
@@ -125,25 +173,82 @@ export function Agents() {
                 )}
                 {sched.length > 0 && (
                   <div className="arm-sched">
-                    {sched.map((j) => (
-                      <div key={j.id} className="arm-sched-row" title={j.cron}>
-                        <span className="arm-sched-cron">
-                          ⏱ {describeCron(j.cron)}
-                          {j.tz && <span className="arm-sched-tz"> · {j.tz}</span>}
-                        </span>
-                        <span className={`arm-sched-state ${j.enabled ? 'on' : 'off'}`}>
-                          {j.enabled ? 'enabled' : 'paused'}
-                        </span>
-                        {j.lastStatus && (
-                          <span
-                            className={`arm-sched-last ${j.lastStatus.startsWith('error') ? 'err' : 'ok'}`}
-                          >
-                            last: {j.lastStatus}
-                            {j.lastRunAt && ` · ${formatRelative(j.lastRunAt)}`}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                    {sched.map((j) => {
+                      const editing = editJob === j.id
+                      const working = busyJob === j.id
+                      return (
+                        <div key={j.id} className="arm-sched-row" title={j.cron}>
+                          {editing ? (
+                            <span className="arm-sched-edit">
+                              <input
+                                className="arm-sched-input"
+                                value={editCron}
+                                onChange={(e) => setEditCron(e.target.value)}
+                                placeholder="min hr dom mon dow"
+                                aria-label="cron expression"
+                              />
+                              <input
+                                className="arm-sched-input tz"
+                                value={editTz}
+                                onChange={(e) => setEditTz(e.target.value)}
+                                placeholder="America/Denver"
+                                aria-label="timezone"
+                              />
+                              <button
+                                className="arm-sched-btn"
+                                disabled={working}
+                                onClick={() => saveEditJob(j)}
+                              >
+                                {working ? '…' : 'save'}
+                              </button>
+                              <button
+                                className="arm-sched-btn ghost"
+                                disabled={working}
+                                onClick={() => {
+                                  setEditJob(null)
+                                  setSchedErr(null)
+                                }}
+                              >
+                                cancel
+                              </button>
+                              {schedErr && <span className="arm-sched-err">{schedErr}</span>}
+                            </span>
+                          ) : (
+                            <>
+                              <span className="arm-sched-cron">
+                                ⏱ {describeCron(j.cron)}
+                                {j.tz && <span className="arm-sched-tz"> · {j.tz}</span>}
+                              </span>
+                              <span className={`arm-sched-state ${j.enabled ? 'on' : 'off'}`}>
+                                {j.enabled ? 'enabled' : 'paused'}
+                              </span>
+                              {j.lastStatus && (
+                                <span
+                                  className={`arm-sched-last ${j.lastStatus.startsWith('error') ? 'err' : 'ok'}`}
+                                >
+                                  last: {j.lastStatus}
+                                  {j.lastRunAt && ` · ${formatRelative(j.lastRunAt)}`}
+                                </span>
+                              )}
+                              <button
+                                className="arm-sched-btn"
+                                disabled={working}
+                                onClick={() => toggleJob(j)}
+                              >
+                                {working ? '…' : j.enabled ? 'pause' : 'resume'}
+                              </button>
+                              <button
+                                className="arm-sched-btn ghost"
+                                disabled={working}
+                                onClick={() => startEditJob(j)}
+                              >
+                                edit
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>

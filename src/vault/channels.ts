@@ -6,7 +6,7 @@
 // `#agent/definition`) — a filter built as `agent/message` returns nothing.
 // All the constants below carry the `#`; never hand-build these strings.
 
-import { createNote, listNotes } from './api'
+import { createNote, listNotes, patchNote } from './api'
 import type { Note, NoteRef } from './types'
 import { SOURCED_FROM } from './util'
 
@@ -210,6 +210,69 @@ export function describeCron(cron: string): string {
     return `every ${min.slice(2)} min`
   }
   return cron
+}
+
+// Pause/resume a job. The runner reads `enabled` each tick, so this takes
+// effect on the next tick — no restart. (metadata merges; other keys untouched.)
+export function setJobEnabled(id: string, enabled: boolean): Promise<Note> {
+  return patchNote(id, { metadata: { enabled: enabled ? 'true' : 'false' } })
+}
+
+// Reschedule a job. The runner re-reads cron/tz on its next tick.
+export function updateJobSchedule(id: string, cron: string, tz: string): Promise<Note> {
+  return patchNote(id, { metadata: { cron: cron.trim(), tz: tz.trim() } })
+}
+
+// Validate a 5-field numeric cron against the runner's v1 grammar (min hour dom
+// month dow; numeric only — no @macros or MON/JAN names; *, */n, a-b, a-b/n,
+// a,b,c; dow 0-6, Sunday=0). The surface writes job notes DIRECTLY to the vault,
+// which bypasses the daemon's validateJob — so we must gate here, or the runner
+// silently skips a malformed cron.
+export function isValidCron(cron: string): boolean {
+  const fields = cron.trim().split(/\s+/)
+  if (fields.length !== 5) return false
+  const bounds: Array<[number, number]> = [
+    [0, 59],
+    [0, 23],
+    [1, 31],
+    [1, 12],
+    [0, 6],
+  ]
+  const fieldOk = (spec: string, lo: number, hi: number): boolean =>
+    spec.split(',').every((part) => {
+      let body = part
+      let step: number | null = null
+      const slash = part.indexOf('/')
+      if (slash !== -1) {
+        step = Number(part.slice(slash + 1))
+        if (!Number.isInteger(step) || step < 1) return false
+        body = part.slice(0, slash)
+      }
+      if (body === '*') return true
+      const dash = body.indexOf('-')
+      if (dash !== -1) {
+        const a = Number(body.slice(0, dash))
+        const b = Number(body.slice(dash + 1))
+        return Number.isInteger(a) && Number.isInteger(b) && a >= lo && b <= hi && a <= b
+      }
+      if (step !== null) return false // a step is only valid on '*' or a range
+      const n = Number(body)
+      return Number.isInteger(n) && n >= lo && n <= hi
+    })
+  return fields.every((spec, i) => fieldOk(spec, bounds[i][0], bounds[i][1]))
+}
+
+// Validate an IANA timezone (empty = daemon-local default, allowed). Mirrors the
+// runner's Intl-based check.
+export function isValidTz(tz: string): boolean {
+  const t = tz.trim()
+  if (!t) return true
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: t })
+    return true
+  } catch {
+    return false
+  }
 }
 
 // ---- Messages ----
