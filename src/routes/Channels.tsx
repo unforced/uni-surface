@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Note } from '../vault/types'
 import { subscribeNotes } from '../vault/sse'
 import { useAsync } from '../vault/useAsync'
@@ -34,6 +34,7 @@ export function Channels() {
   // of truth when present.
   const { name: routeName } = useParams<{ name: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [channel, setChannel] = useState(() => routeName || localStorage.getItem(CHANNEL_KEY) || 'uni')
   useEffect(() => {
     if (routeName && routeName !== channel) {
@@ -50,6 +51,20 @@ export function Channels() {
   const [live, setLive] = useState(false)
   const [picker, setPicker] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
+
+  // Prefill the composer when arriving via a note's "Reference in Uni" action
+  // (/agent/:name?ref=<path>): drop a wikilink to the note so the message links
+  // back to it in the graph. Strip the param after, so resend/refresh is clean
+  // and an already-typed draft is never clobbered.
+  useEffect(() => {
+    const ref = searchParams.get('ref')
+    if (!ref) return
+    setText((t) => (t.trim() ? t : `Referencing [[${ref}]]\n\n`))
+    const next = new URLSearchParams(searchParams)
+    next.delete('ref')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   // The agent roster for the switcher. Failure is fine — the choices fall back
   // to the current channel + 'uni' and the free-text "other…" path still works.
