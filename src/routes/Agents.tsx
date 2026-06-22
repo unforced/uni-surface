@@ -13,6 +13,7 @@ import {
   statusDotClass,
   selectChannel,
   seenMap,
+  noteAgentKey,
 } from '../vault/channels'
 
 // The window into Uni itself — the system's self-state (Uni/Now), the agent
@@ -42,7 +43,7 @@ export function Agents() {
     const counts = new Map<string, number>()
     for (const n of outbound.data ?? []) {
       if (seen[n.id]) continue
-      const c = String(n.metadata?.channel ?? '')
+      const c = noteAgentKey(n)
       if (!c) continue
       counts.set(c, (counts.get(c) ?? 0) + 1)
     }

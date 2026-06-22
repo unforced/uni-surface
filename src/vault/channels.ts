@@ -22,6 +22,14 @@ export const AGENT_DEF_TAG = '#agent/definition'
 
 export const tsOf = (n: Note) => String(n.metadata?.ts ?? n.createdAt ?? '')
 
+// The agent a message belongs to — the read-side routing key. Post-cutover the
+// daemon stamps `metadata.agent` only; pre-cutover (and stale-tab straggler)
+// notes carry `metadata.channel`, and an empty agent ('') must fall through to
+// channel. So truthiness (`||`), NOT `??` — mirrors the daemon's noteAgentKey.
+export function noteAgentKey(n: Note): string {
+  return String(n.metadata?.agent || n.metadata?.channel || '')
+}
+
 export function isOutbound(n: Note): boolean {
   const d = String(n.metadata?.direction ?? '')
   if (d) return d === 'outbound'
@@ -145,7 +153,7 @@ export async function listOutboundMessages(limit = 300): Promise<Note[]> {
 export function lastOutboundByChannel(notes: Note[]): Map<string, string> {
   const out = new Map<string, string>()
   for (const n of notes) {
-    const c = String(n.metadata?.channel ?? '')
+    const c = noteAgentKey(n)
     if (!c) continue
     const ts = tsOf(n)
     if (ts > (out.get(c) ?? '')) out.set(c, ts)

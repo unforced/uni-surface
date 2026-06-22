@@ -11,6 +11,7 @@ import {
   markSeen,
   selectChannel,
   sendChannelMessage,
+  noteAgentKey,
 } from '../vault/channels'
 
 // An agent's name as a small colored chip — same palette slot everywhere it
@@ -83,7 +84,7 @@ function ReplyRow({ channel }: { channel: string }) {
 // marks the note seen (it then lives on in the thread view, not the feed).
 function CardBase({ note, report }: { note: Note; report: boolean }) {
   const sender = senderOf(note)
-  const channel = String(note.metadata?.channel ?? '')
+  const channel = noteAgentKey(note)
   const asks = report ? note.metadata?.asks : undefined
   const ts = tsOf(note)
 

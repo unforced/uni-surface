@@ -19,6 +19,7 @@ import {
   selectChannel,
   isOutbound,
   markSeen,
+  noteAgentKey,
 } from '../vault/channels'
 
 // The channels organ — talking to the agent through the vault, live.
@@ -40,7 +41,7 @@ export function Channels() {
   const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
 
   useEffect(() => {
-    const inChannel = (n: Note) => String(n.metadata?.channel ?? '') === channel
+    const inChannel = (n: Note) => noteAgentKey(n) === channel
     const unsub = subscribeNotes(
       { tag: MSG_TAG },
       {
