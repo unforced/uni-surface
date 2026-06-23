@@ -19,6 +19,10 @@ export const CHANNEL_KEY = 'pv.channel'
 // The agent roster: each agent is an `#agent/definition` note at Agents/<name>,
 // its body the system prompt and its metadata the config.
 export const AGENT_DEF_TAG = '#agent/definition'
+// A thread record (definition → thread → messages). Carries metadata.status:
+// 'working' while a turn runs, 'ok'/'error' when it settles — written by the
+// daemon. We subscribe to it to show a live "thinking…" pill.
+export const THREAD_TAG = '#agent/thread'
 
 export const tsOf = (n: Note) => String(n.metadata?.ts ?? n.createdAt ?? '')
 

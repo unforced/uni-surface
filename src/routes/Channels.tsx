@@ -8,6 +8,7 @@ import { SenderChip } from '../components/ChannelMessageCard'
 import { noteHref } from '../vault/util'
 import {
   MSG_TAG,
+  THREAD_TAG,
   CHANNEL_KEY,
   type Agent,
   tsOf,
@@ -50,7 +51,9 @@ export function Channels() {
   const [sending, setSending] = useState(false)
   const [live, setLive] = useState(false)
   const [picker, setPicker] = useState(false)
+  const [thinking, setThinking] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
+  const threadsRef = useRef<Map<string, Note>>(new Map())
 
   // Prefill the composer when arriving via a note's "Reference in Uni" action
   // (/agent/:name?ref=<path>): drop a wikilink to the note so the message links
@@ -95,6 +98,38 @@ export function Channels() {
             return next
           }),
         onError: () => setLive(false),
+      },
+    )
+    return unsub
+  }, [channel])
+
+  // Live "thinking…" pill: the agent's #agent/thread note carries
+  // metadata.status ('working' during a turn, 'ok'/'error' after) — written by
+  // the daemon today. We read that existing state over the same live-query (no
+  // new writes, no new auth) and light the pill while any of this agent's
+  // threads is working.
+  useEffect(() => {
+    threadsRef.current = new Map()
+    setThinking(false)
+    const forAgent = (n: Note) => noteAgentKey(n) === channel
+    const isWorking = (n: Note) => String(n.metadata?.status ?? '') === 'working'
+    const recompute = () => setThinking([...threadsRef.current.values()].some(isWorking))
+    const unsub = subscribeNotes(
+      { tag: THREAD_TAG },
+      {
+        onSnapshot: (notes) => {
+          threadsRef.current = new Map(notes.filter(forAgent).map((n) => [n.id, n]))
+          recompute()
+        },
+        onUpsert: (n) => {
+          if (!forAgent(n)) return
+          threadsRef.current.set(n.id, n)
+          recompute()
+        },
+        onRemove: (id) => {
+          threadsRef.current.delete(id)
+          recompute()
+        },
       },
     )
     return unsub
@@ -236,6 +271,16 @@ export function Channels() {
             </div>
           )
         })}
+        {thinking && (
+          <div className="chat-thinking" aria-live="polite">
+            <span className="ct-label">{channel} is thinking</span>
+            <span className="ct-dots">
+              <i />
+              <i />
+              <i />
+            </span>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 
