@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { completeOAuth, PendingApprovalError } from '../vault/oauth'
+import { completeOAuth, PendingApprovalError, loadPendingOAuth } from '../vault/oauth'
+import { completeAgentOAuth, loadAgentPendingOAuth, persistAgentToken } from '../vault/agentAuth'
 import { setAuth, setConfig } from '../vault/config'
 import { Seed } from '../components/icons'
 
@@ -31,6 +32,26 @@ export function OAuthCallback() {
     }
     if (!code || !state) {
       setError('Missing authorization code. Start the sign-in again from the connect screen.')
+      return
+    }
+
+    // One callback, two flows. Route by which pending slot owns this `state`.
+    // Agent flow (agent:read) is isolated under its own keys; the vault flow is
+    // the default. We don't touch the other flow's pending — it stays for retry.
+    const agentPending = loadAgentPendingOAuth()
+    if (agentPending && agentPending.state === state) {
+      completeAgentOAuth(code, state)
+        .then(({ pending, token }) => {
+          persistAgentToken(pending, token)
+          nav('/', { replace: true })
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      return
+    }
+
+    const vaultPending = loadPendingOAuth()
+    if (!vaultPending || vaultPending.state !== state) {
+      setError('Sign-in state does not match a pending flow. Start again from the connect screen.')
       return
     }
 

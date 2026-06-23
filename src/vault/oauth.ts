@@ -150,14 +150,14 @@ interface CachedClientRegistration {
 // DCR client_id is cached per (issuer, redirectUri) so we register at most once
 // per browser per issuer. Re-register when the redirect URI changes — the hub
 // binds client_id to redirect_uri and would reject the authorize otherwise.
-function loadCachedClientId(issuer: string, redirect: string): string | null {
+export function loadCachedClientId(issuer: string, redirect: string): string | null {
   const cached = read<CachedClientRegistration>(localStorage, DCR_PREFIX + normalizeIssuerKey(issuer))
   if (!cached) return null
   if (cached.redirectUri !== redirect) return null
   return cached.clientId
 }
 
-function saveCachedClientId(issuer: string, redirect: string, clientId: string): void {
+export function saveCachedClientId(issuer: string, redirect: string, clientId: string): void {
   write(localStorage, DCR_PREFIX + normalizeIssuerKey(issuer), {
     clientId,
     redirectUri: redirect,

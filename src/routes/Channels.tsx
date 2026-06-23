@@ -6,6 +6,10 @@ import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { SenderChip } from '../components/ChannelMessageCard'
 import { noteHref } from '../vault/util'
+import { TurnStream } from '../components/TurnStream'
+import { subscribeTurnEvents, foldTurn, emptyTurn, type TurnState } from '../vault/turnEvents'
+import { ensureAgentToken, getAgentHubOrigin, hasAgentToken, beginAgentOAuth } from '../vault/agentAuth'
+import { getConfig } from '../vault/config'
 import {
   MSG_TAG,
   THREAD_TAG,
@@ -52,6 +56,8 @@ export function Channels() {
   const [live, setLive] = useState(false)
   const [picker, setPicker] = useState(false)
   const [thinking, setThinking] = useState(false)
+  const [turn, setTurn] = useState<TurnState>(emptyTurn())
+  const [agentReady] = useState(() => hasAgentToken())
   const endRef = useRef<HTMLDivElement>(null)
   const threadsRef = useRef<Map<string, Note>>(new Map())
 
@@ -135,6 +141,34 @@ export function Channels() {
     return unsub
   }, [channel])
 
+  // (d) The rich "watch it work" stream — layers onto the pill when an
+  // agent:read token is present. Opens the daemon turn-events SSE for this
+  // channel and folds events into the live turn. No token → no-op (the pill
+  // still works on the thread status alone).
+  useEffect(() => {
+    let unsub = () => {}
+    let cancelled = false
+    ;(async () => {
+      const token = await ensureAgentToken()
+      const origin = getAgentHubOrigin()
+      if (cancelled || !token || !origin) return
+      unsub = subscribeTurnEvents(origin, channel, token, {
+        onEvent: (e) => setTurn((prev) => foldTurn(prev, e)),
+      })
+    })()
+    return () => {
+      cancelled = true
+      unsub()
+      setTurn(emptyTurn())
+    }
+  }, [channel])
+
+  // Clear the streamed turn once it settles — the final answer lands as a
+  // normal message bubble, so we don't want the streamed copy lingering.
+  useEffect(() => {
+    if (!thinking) setTurn(emptyTurn())
+  }, [thinking])
+
   // What the switcher shows: the roster, with 'uni' (and whatever channel is
   // currently selected) always present even when the query came back empty.
   const agentChoices = useMemo(() => {
@@ -192,6 +226,20 @@ export function Channels() {
     if (c && c.trim()) pickChannel(c.trim())
   }
 
+  // One-time consent for the rich turn-stream: runs the isolated agent:read
+  // OAuth flow (separate audience from the vault token). Redirects out and back
+  // through /oauth/callback, which stores the agent token.
+  async function enableAgentDetail() {
+    const cfg = getConfig()
+    if (!cfg) return
+    try {
+      const { authorizeUrl } = await beginAgentOAuth(cfg.origin)
+      window.location.assign(authorizeUrl)
+    } catch {
+      /* best-effort — the thinking pill still works without the detail token */
+    }
+  }
+
   return (
     <div className="page" style={{ maxWidth: 740 }}>
       <div className="page-head">
@@ -225,6 +273,11 @@ export function Channels() {
         <p className="sub">
           <span className={`chat-dot${live ? ' on' : ''}`} />
           {live ? 'Live — talk to Uni; replies arrive in realtime.' : 'Connecting…'}
+          {!agentReady && (
+            <button className="chat-enable" onClick={enableAgentDetail} title="Stream tool calls + partial replies as the agent works">
+              watch it work ▸
+            </button>
+          )}
         </p>
       </div>
 
@@ -271,6 +324,7 @@ export function Channels() {
             </div>
           )
         })}
+        <TurnStream turn={turn} />
         {thinking && (
           <div className="chat-thinking" aria-live="polite">
             <span className="ct-label">{channel} is thinking</span>
