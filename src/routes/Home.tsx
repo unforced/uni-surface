@@ -1,256 +1,220 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { listSurfaces, listPendingProposals } from '../vault/api'
 import type { Note } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { CAPTURE_CREATED_EVENT } from '../App'
-import { PROPOSAL_RESOLVED_EVENT } from './Weave'
-import { MorningCard } from '../components/MorningCard'
-import { SurfaceCard } from '../components/SurfaceCard'
-import { ProposalCard } from '../components/ProposalCard'
-import { ChannelMessageCard, ReportCard } from '../components/ChannelMessageCard'
-import { Loading, ErrorBanner, EmptyState, Toast } from '../components/common'
+import { getClient } from '../vault/surface'
+import { SenderChip } from '../components/ChannelMessageCard'
+import { Loading } from '../components/common'
 import { formatRelative } from '../vault/util'
 import {
-  type Agent,
+  THREAD_TAG,
   tsOf,
   senderOf,
-  senderLabel,
-  fetchAgentRoster,
-  listOutboundMessages,
-  lastOutboundByChannel,
   isRead,
+  noteAgentKey,
+  listOutboundMessages,
+  sendChannelMessage,
+  agentHref,
 } from '../vault/channels'
 
-// One item in the merged stream, tagged with which organ it came from.
-type FeedKind = 'surface' | 'proposal' | 'message' | 'report'
-interface FeedItem {
-  kind: FeedKind
-  ts: string
-  note: Note
-}
-
-type Filter = 'all' | 'foryou' | 'weave' | 'channels'
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'foryou', label: 'For You' },
-  { id: 'weave', label: 'Weave' },
-  { id: 'channels', label: 'Channels' },
-]
+// Home — the calm Uni front door (Uni/Design/The Uni-native surface → "Calm Uni
+// front door"). Not a triage stream and not a decision-counter tollbooth: a
+// spacious place to THINK WITH Uni (the composer drops into the conversation),
+// with a legible PULSE of what the system is doing on Aaron's behalf, and a
+// quiet pointer to For You when something wants him. The daily ritual lives in
+// Today; the actionable feed lives in For You. This is the membrane's threshold.
 
 const reportAsks = (n: Note) => Number(n.metadata?.asks ?? 0)
 
-// Home — the one stream. Everything that wants Aaron's eyes, merged: open
-// surfaces (For You), pending proposals (Weave), and unseen arm messages +
-// reports (Channels), needs-you items pinned first, the rest reverse-chron.
-// The morning card sits on top (Home absorbs Today; the full Today spine
-// stays at /today). Seen channel messages drop out — they live in the thread.
-export function Home() {
-  const [filter, setFilter] = useState<Filter>('all')
-  const [toast, setToast] = useState<string | null>(null)
-  // Proposals optimistically pulled from the list the moment they're resolved.
-  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set())
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h < 5) return 'Still up'
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  if (h < 22) return 'Good evening'
+  return 'Late night'
+}
 
-  // Mount-time clock for the "quiet today" window (stable across re-renders).
-  const [now] = useState(() => Date.now())
+// A one-line glance of a message for the pulse (markdown flattened, trimmed).
+function preview(n: Note): string {
+  const t = (n.content ?? '').replace(/[#*_`>-]/g, ' ').replace(/\s+/g, ' ').trim()
+  return t.length > 110 ? `${t.slice(0, 110)}…` : t
+}
+
+export function Home() {
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const navigate = useNavigate()
 
   const surfaces = useAsync(() => listSurfaces(), [])
   const proposals = useAsync(() => listPendingProposals(), [])
-  // Messages snapshot: cards mark themselves read (in the vault) as they render,
-  // but the fetched snapshot keeps `read` as-of-fetch, so they stay visible for
-  // this visit and the next load drops the now-read ones.
   const messages = useAsync(() => listOutboundMessages(), [])
-  const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
 
-  // Re-pull when a capture lands/syncs (answers drop surfaces) or a proposal is
-  // decided elsewhere.
+  // Refresh the pulse + For-You pointer when a capture lands (answers may resolve
+  // surfaces; new activity may arrive).
   useEffect(() => {
     const r = () => {
       surfaces.reload()
-      proposals.reload()
+      messages.reload()
     }
     window.addEventListener(CAPTURE_CREATED_EVENT, r)
     window.addEventListener('pv:capture-synced', r)
-    window.addEventListener(PROPOSAL_RESOLVED_EVENT, r)
     return () => {
       window.removeEventListener(CAPTURE_CREATED_EVENT, r)
       window.removeEventListener('pv:capture-synced', r)
-      window.removeEventListener(PROPOSAL_RESOLVED_EVENT, r)
     }
-    // reload fns are stable from useAsync; intentionally run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function flash(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2600)
-  }
-
-  function onProposalResolved(id: string, msg: string) {
-    setResolvedIds((s) => new Set(s).add(id))
-    flash(msg)
-    proposals.reload()
-    window.dispatchEvent(new CustomEvent(PROPOSAL_RESOLVED_EVENT, { detail: id }))
-  }
-
-  const openSurfaces = useMemo(
-    () => (surfaces.data ?? []).filter((s) => (s.metadata?.state ?? 'open') === 'open'),
-    [surfaces.data],
-  )
-  const pendingProposals = useMemo(
-    () =>
-      (proposals.data ?? []).filter(
-        (p) => !resolvedIds.has(p.id) && (p.metadata?.status ?? 'pending') === 'pending',
-      ),
-    [proposals.data, resolvedIds],
-  )
-
-  const unseenMsgs = useMemo(
-    () => (messages.data ?? []).filter((m) => !isRead(m)),
-    [messages.data],
-  )
-
-  // ── The merged feed. In 'all', surfaces stay out of the stream — the morning
-  // card on top already renders every open surface (no duplicate cards). ──
-  const feed = useMemo(() => {
-    const items: FeedItem[] = []
-    if (filter === 'foryou') {
-      for (const s of openSurfaces) items.push({ kind: 'surface', ts: s.createdAt ?? '', note: s })
-    }
-    if (filter === 'all' || filter === 'weave') {
-      for (const p of pendingProposals)
-        items.push({ kind: 'proposal', ts: p.createdAt ?? '', note: p })
-    }
-    if (filter === 'all' || filter === 'channels') {
-      for (const m of unseenMsgs) {
-        const kind: FeedKind = String(m.metadata?.kind ?? '') === 'report' ? 'report' : 'message'
-        items.push({ kind, ts: tsOf(m), note: m })
+  // ── The live pulse: which agents are mid-turn right now. ──
+  // Reads the existing #agent/thread status over the shared live subscription
+  // (no new writes, no new auth) — the "watch it work" transparency that makes
+  // a continuously-working system feel calm rather than loud.
+  const [working, setWorking] = useState<string[]>([])
+  const threadsRef = useRef<Map<string, Note>>(new Map())
+  useEffect(() => {
+    const client = getClient()
+    if (!client) return
+    const recompute = () => {
+      const names = new Set<string>()
+      for (const n of threadsRef.current.values()) {
+        if (String(n.metadata?.status ?? '') === 'working') names.add(noteAgentKey(n))
       }
+      setWorking([...names].filter(Boolean))
     }
-    // Needs-you pinned first (surfaces, proposals, reports with asks), then
-    // everything reverse-chron.
-    const needsYou = (it: FeedItem) =>
-      it.kind === 'surface' ||
-      it.kind === 'proposal' ||
-      (it.kind === 'report' && reportAsks(it.note) > 0)
-    const byTs = (a: FeedItem, b: FeedItem) => b.ts.localeCompare(a.ts)
-    return [...items.filter(needsYou).sort(byTs), ...items.filter((it) => !needsYou(it)).sort(byTs)]
-  }, [filter, openSurfaces, pendingProposals, unseenMsgs])
-
-  // ── Attention ledger: what's waiting + who reported last + who's gone quiet. ──
-  const ledger = useMemo(() => {
-    const outbound = messages.data ?? []
-    const waiting =
-      openSurfaces.length +
-      pendingProposals.length +
-      unseenMsgs.filter((m) => String(m.metadata?.kind ?? '') === 'report' && reportAsks(m) > 0)
-        .length
-    let latestReport: Note | null = null
-    for (const m of outbound) {
-      if (String(m.metadata?.kind ?? '') !== 'report') continue
-      if (!latestReport || tsOf(m) > tsOf(latestReport)) latestReport = m
-    }
-    const lastBy = lastOutboundByChannel(outbound)
-    const dayAgo = new Date(now - 24 * 3600000).toISOString()
-    const quiet = (roster.data ?? []).filter(
-      (a) => a.status === 'enabled' && (lastBy.get(a.channel) ?? '') < dayAgo,
+    const unsub = client.subscribe(
+      { tag: THREAD_TAG },
+      {
+        onSnapshot: (notes) => {
+          threadsRef.current = new Map((notes as unknown as Note[]).map((n) => [n.id, n]))
+          recompute()
+        },
+        onUpsert: (note) => {
+          threadsRef.current.set((note as unknown as Note).id, note as unknown as Note)
+          recompute()
+        },
+        onRemove: (id) => {
+          threadsRef.current.delete(id)
+          recompute()
+        },
+      },
     )
-    return { waiting, latestReport, quiet }
-  }, [messages.data, openSurfaces, pendingProposals, unseenMsgs, roster.data, now])
+    return unsub
+  }, [])
 
-  const loading = surfaces.loading || proposals.loading || messages.loading
-  const firstError = surfaces.error ?? proposals.error ?? messages.error
+  // Recent activity — the last several agent→Aaron messages, a read-only glance
+  // (not a triage list). Unread ones carry a quiet dot.
+  const activity = useMemo(() => (messages.data ?? []).slice(0, 6), [messages.data])
+
+  // Is anything actually waiting in For You? (open surfaces, pending proposals,
+  // unread report-asks.) Drives the calm pointer — named, never a hard counter.
+  const hasForYou = useMemo(() => {
+    const openSurfaces = (surfaces.data ?? []).some((s) => (s.metadata?.state ?? 'open') === 'open')
+    const pending = (proposals.data ?? []).some(
+      (p) => (p.metadata?.status ?? 'pending') === 'pending',
+    )
+    const asks = (messages.data ?? []).some(
+      (m) => String(m.metadata?.kind ?? '') === 'report' && reportAsks(m) > 0 && !isRead(m),
+    )
+    return openSurfaces || pending || asks
+  }, [surfaces.data, proposals.data, messages.data])
+
+  async function send() {
+    const body = text.trim()
+    if (!body || sending) return
+    setSending(true)
+    try {
+      // Drop into the conversation with Uni — the front door IS the composer.
+      await sendChannelMessage('uni', body)
+      setText('')
+      navigate(agentHref('uni'))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const workingLabel =
+    working.length === 0
+      ? null
+      : working.includes('uni')
+        ? working.length === 1
+          ? 'Uni is thinking'
+          : `Uni and ${working.length - 1} other${working.length > 2 ? 's' : ''} are working`
+        : working.length === 1
+          ? `${working[0]} is working`
+          : `${working.length} agents are working`
 
   return (
-    <div className="page" style={{ maxWidth: 760 }}>
-      <div className="page-head">
-        <div className="kicker">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
-        <h1>Home</h1>
-        <p className="sub">One stream — what the vault and the agents are holding for you.</p>
-      </div>
-
-      {/* Attention ledger */}
-      <div className="hm-ledger">
-        <div className="hm-ledger-line">
-          {/* Calm, not a counter: a named pointer to the For You feed, never an
-              opaque "N decisions waiting" tollbooth. */}
-          {ledger.waiting > 0 ? (
-            <Link className="hm-waiting hm-waiting-link" to="/inbox">
-              Some things are for you →
-            </Link>
-          ) : (
-            <span className="hm-waiting">Nothing needs you</span>
-          )}
-          {ledger.latestReport && (
-            <span className="hm-reported">
-              · {senderLabel(senderOf(ledger.latestReport))} reported{' '}
-              {formatRelative(tsOf(ledger.latestReport))}
-            </span>
-          )}
-          <Link className="hm-agents" to="/agents">agents →</Link>
+    <div className="page fd" style={{ maxWidth: 680 }}>
+      <div className="fd-head">
+        <div className="kicker">
+          {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
         </div>
-        {ledger.quiet.map((a) => (
-          <div key={a.channel} className="hm-quiet">{a.channel}: quiet today</div>
-        ))}
+        <h1>{greeting()}.</h1>
+        <p className="sub">
+          Think with Uni — kick off work, talk something through, or just watch the pulse. Your day
+          lives in <Link to="/today">Today</Link>; what wants you is in <Link to="/inbox">For You</Link>.
+        </p>
       </div>
 
-      {/* Morning prompts (Home absorbs Today's opening ritual) */}
-      <MorningCard />
-
-      {/* Filter chips */}
-      <div className="hm-chips" role="tablist">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            role="tab"
-            aria-selected={filter === f.id}
-            className={`hm-chip${filter === f.id ? ' sel' : ''}`}
-            onClick={() => setFilter(f.id)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {loading && feed.length === 0 && <Loading label="Gathering the stream…" />}
-      {Boolean(firstError) && feed.length === 0 && (
-        <ErrorBanner
-          error={firstError}
-          onRetry={() => {
-            surfaces.reload()
-            proposals.reload()
-            messages.reload()
+      {/* ── The composer: talk to Uni ── */}
+      <div className="fd-composer">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Talk to Uni…  (⌘↵ to send)"
+          rows={3}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault()
+              void send()
+            }
           }}
         />
-      )}
-      {!loading && feed.length === 0 && !firstError && (
-        <EmptyState art="🌾" title="The stream is clear">
-          Nothing new from the agents, no proposals pending. When something wants your eyes, it
-          lands here.
-        </EmptyState>
-      )}
-
-      <div className="hm-feed">
-        {feed.map((it) => {
-          if (it.kind === 'surface') {
-            return <SurfaceCard key={it.note.id} surface={it.note} onChanged={surfaces.reload} />
-          }
-          if (it.kind === 'proposal') {
-            return (
-              <ProposalCard
-                key={it.note.id}
-                proposal={it.note}
-                onResolved={onProposalResolved}
-                onPartial={(_id, msg) => flash(msg)}
-              />
-            )
-          }
-          if (it.kind === 'report') return <ReportCard key={it.note.id} note={it.note} />
-          return <ChannelMessageCard key={it.note.id} note={it.note} />
-        })}
+        <div className="fd-composer-row">
+          <span className="fd-hint">Drops into your conversation with Uni</span>
+          <button className="btn" onClick={send} disabled={!text.trim() || sending}>
+            {sending ? '…' : 'Send to Uni ↩'}
+          </button>
+        </div>
       </div>
 
-      {toast && <Toast message={toast} />}
+      {/* ── The pulse: who's working right now ── */}
+      {workingLabel && (
+        <div className="fd-working" aria-live="polite">
+          <span className="ct-dots"><i /><i /><i /></span>
+          <span className="fd-working-label">{workingLabel}…</span>
+        </div>
+      )}
+
+      {/* ── Quiet pointer to For You ── */}
+      <Link className={`fd-foryou${hasForYou ? ' on' : ''}`} to="/inbox">
+        {hasForYou ? 'Something’s waiting for you in For You →' : 'For You is clear — nothing needs you'}
+      </Link>
+
+      {/* ── Recent activity glance ── */}
+      <div className="fd-activity">
+        <div className="fd-activity-head">Recent activity</div>
+        {messages.loading && activity.length === 0 && <Loading label="Reading the pulse…" />}
+        {!messages.loading && activity.length === 0 && (
+          <p className="fd-activity-empty">Quiet so far. When the agents work, it shows here.</p>
+        )}
+        {activity.map((m) => {
+          const agent = noteAgentKey(m) || 'uni'
+          const kind = String(m.metadata?.kind ?? '')
+          return (
+            <Link key={m.id} to={agentHref(agent)} className="fd-act-row">
+              <SenderChip sender={senderOf(m)} />
+              {(kind === 'report' || kind === 'dispatch') && <span className="fd-act-kind">{kind}</span>}
+              <span className="fd-act-text">{preview(m)}</span>
+              <span className="fd-act-when">{tsOf(m) ? formatRelative(tsOf(m)) : ''}</span>
+              {!isRead(m) && <span className="fd-act-dot" title="unread" />}
+            </Link>
+          )
+        })}
+      </div>
     </div>
   )
 }
