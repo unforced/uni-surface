@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ping } from '../vault/api'
-import { setConfig, getConfig, DEFAULT_VAULT_URL } from '../vault/config'
-import { beginOAuth } from '../vault/oauth'
-import { InsecureContextError } from '../vault/pkce'
+import { getConfig, DEFAULT_VAULT_URL } from '../vault/config'
+import { login as surfaceLogin, connectWithToken as surfaceConnectWithToken } from '../vault/surface'
+import { InsecureContextError } from '@openparachute/surface-client'
 import { Seed } from '../components/icons'
 
 // First-run (and "change vault") screen.
@@ -32,9 +32,8 @@ export function Config() {
     }
     setStatus('signing')
     try {
-      const { authorizeUrl } = await beginOAuth(o)
-      // Top-level redirect — no CORS needed for the authorize step.
-      window.location.assign(authorizeUrl)
+      // Discover → DCR → top-level redirect to the hub (surface-client owns it).
+      await surfaceLogin(o)
     } catch (err) {
       setStatus('idle')
       setError(
@@ -61,7 +60,7 @@ export function Config() {
     setStatus('testing')
     try {
       await ping(o, t)
-      setConfig({ origin: o, token: t })
+      surfaceConnectWithToken(o, t)
       setOk(true)
       setTimeout(() => nav('/'), 450)
     } catch (err) {

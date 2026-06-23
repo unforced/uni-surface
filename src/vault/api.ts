@@ -1,145 +1,34 @@
-// Thin client over the Parachute Vault REST API.
-// base = <origin>/api ; Authorization: Bearer <token> on every request.
+// Domain helpers over the Parachute Vault REST API.
+//
+// Transport + auth (bearer, OAuth refresh-on-401, error classification) now come
+// from `@openparachute/surface-client`'s `VaultClient`, reached via `surface.ts`.
+// This module keeps the vault's domain shapes the app speaks (surfaces, weave,
+// proposals, entities, attachments) — every export below is a thin, typed call
+// onto that shared client. The hand-rolled `request`/`doFetch`/`tryRefresh`/
+// `authedFetch` core is gone.
 
-import { getAuth, getConfig, isOAuth, updateAccessToken } from './config'
-import { refreshAccessToken } from './oauth'
-import type { Note, NoteMetadata, TagRecord } from './types'
+import { requireClient } from './surface'
+import {
+  VaultError,
+  VaultConflictError,
+  VaultNotFoundError,
+  type Note as LibNote,
+  type UpdateNotePayload,
+} from '@openparachute/surface-client'
+import type { EntityType, Note, NoteMetadata, TagRecord } from './types'
 
-export class VaultError extends Error {
-  status: number
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
-    this.name = 'VaultError'
-  }
-}
+// Re-export the library error hierarchy so callers keep their existing
+// `instanceof VaultError` / `VaultConflictError` (+ `.status` / `.currentUpdatedAt`)
+// handling unchanged (e.g. the outbox's auth/conflict classification,
+// UpdateEntityCard's re-apply-on-latest path).
+export { VaultError, VaultConflictError }
 
-// Optimistic-concurrency failure: the note changed since the `if_updated_at` we
-// sent. The vault answers 409 with the live `current_updated_at`, which we carry
-// so the UI can offer a "re-apply on latest" path without a second round-trip.
-export class VaultConflictError extends VaultError {
-  currentUpdatedAt: string | null
-  constructor(message: string, currentUpdatedAt: string | null) {
-    super(409, message)
-    this.name = 'VaultConflictError'
-    this.currentUpdatedAt = currentUpdatedAt
-  }
-}
-
-function requireConfig() {
-  const cfg = getConfig()
-  if (!cfg) throw new VaultError(0, 'Vault not configured')
-  return cfg
-}
-
-// When signed in via OAuth, swap an expiring/rejected access token for a fresh
-// one using the stored refresh token. Returns the new access token, or null if
-// there's nothing to refresh (pasted token, or no refresh_token). The hub
-// rotates the refresh token, so we persist whatever comes back.
-let refreshInflight: Promise<string | null> | null = null
-
-async function tryRefresh(): Promise<string | null> {
-  if (refreshInflight) return refreshInflight
-  refreshInflight = (async () => {
-    const auth = getAuth()
-    if (!auth || !auth.refreshToken) return null
-    try {
-      const token = await refreshAccessToken({
-        tokenEndpoint: auth.tokenEndpoint,
-        clientId: auth.clientId,
-        refreshToken: auth.refreshToken,
-      })
-      updateAccessToken(token.access_token, {
-        refreshToken: token.refresh_token ?? auth.refreshToken,
-        expiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
-        scope: token.scope ?? auth.scope,
-      })
-      return token.access_token
-    } catch {
-      return null
-    }
-  })()
-  try {
-    return await refreshInflight
-  } finally {
-    refreshInflight = null
-  }
-}
-
-function doFetch(
-  origin: string,
-  path: string,
-  method: string,
-  token: string,
-  body?: unknown,
-): Promise<Response> {
-  return fetch(`${origin}/api${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
-}
-
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  const { origin, token } = requireConfig()
-  let res: Response
-  try {
-    res = await doFetch(origin, path, method, token, body)
-  } catch (e) {
-    throw new VaultError(
-      0,
-      `Could not reach the vault at ${origin}. Is it running and reachable? (${
-        e instanceof Error ? e.message : String(e)
-      })`,
-    )
-  }
-  // OAuth: an expired access token surfaces as 401. Refresh once and retry.
-  if (res.status === 401 && isOAuth()) {
-    const fresh = await tryRefresh()
-    if (fresh) {
-      try {
-        res = await doFetch(origin, path, method, fresh, body)
-      } catch (e) {
-        throw new VaultError(
-          0,
-          `Could not reach the vault at ${origin}. (${e instanceof Error ? e.message : String(e)})`,
-        )
-      }
-    }
-  }
-  if (!res.ok) {
-    let detail = res.statusText
-    let body: Record<string, unknown> | null = null
-    try {
-      body = (await res.json()) as Record<string, unknown>
-      detail = (body && (body.message || body.error)) ? String(body.message || body.error) : detail
-    } catch {
-      /* ignore */
-    }
-    // Optimistic-concurrency conflict (stale if_updated_at): surface the live
-    // updated_at so callers can reconcile + re-apply.
-    if (res.status === 409 || body?.error_type === 'conflict') {
-      const cur = body?.current_updated_at
-      throw new VaultConflictError(detail, typeof cur === 'string' ? cur : null)
-    }
-    if (res.status === 401 || res.status === 403) {
-      const hint = isOAuth()
-        ? 'Your session expired — sign in again.'
-        : 'Your token may be expired — re-paste it.'
-      throw new VaultError(res.status, `Auth failed (${res.status}). ${hint}`)
-    }
-    throw new VaultError(res.status, `${res.status} ${detail}`)
-  }
-  if (res.status === 204) return undefined as T
-  return (await res.json()) as T
-}
+// The library's `Note` (camelCase wire shape) is byte-compatible with the app's
+// `Note`; its fields are merely typed as optional. The wire always populates
+// them for real notes, so this cast is safe and contained to this transport
+// boundary.
+const asNote = (n: LibNote): Note => n as unknown as Note
+const asNotes = (ns: LibNote[]): Note[] => ns as unknown as Note[]
 
 // ---- Notes ----
 
@@ -158,7 +47,7 @@ export interface NotesQuery {
   dateTo?: string
 }
 
-export function listNotes(q: NotesQuery = {}): Promise<Note[]> {
+export async function listNotes(q: NotesQuery = {}): Promise<Note[]> {
   const p = new URLSearchParams()
   if (q.tag) p.set('tag', q.tag)
   if (q.search) p.set('search', q.search)
@@ -172,21 +61,16 @@ export function listNotes(q: NotesQuery = {}): Promise<Note[]> {
   if (q.sort) p.set('sort', q.sort)
   if (q.dateFrom) p.set('date_from', q.dateFrom)
   if (q.dateTo) p.set('date_to', q.dateTo)
-  const qs = p.toString()
-  return request<Note[]>('GET', `/notes${qs ? `?${qs}` : ''}`)
+  return asNotes(await requireClient().queryNotes(p))
 }
 
-export function getNote(
+export async function getNote(
   idOrPath: string,
   opts: { includeLinks?: boolean; includeAttachments?: boolean } = {},
 ): Promise<Note> {
-  // Paths contain slashes — encode the whole segment.
-  const enc = encodeURIComponent(idOrPath)
-  const p = new URLSearchParams()
-  if (opts.includeLinks) p.set('include_links', 'true')
-  if (opts.includeAttachments) p.set('include_attachments', 'true')
-  const qs = p.toString()
-  return request<Note>('GET', `/notes/${enc}${qs ? `?${qs}` : ''}`)
+  const n = await requireClient().getNote(idOrPath, opts)
+  if (!n) throw new VaultNotFoundError(`Note not found: ${idOrPath}`)
+  return asNote(n)
 }
 
 export interface LinkAdd {
@@ -201,34 +85,28 @@ export interface PatchNote {
   links?: { add?: LinkAdd[]; remove?: { target: string; relationship?: string }[] }
 }
 
-export function patchNote(id: string, patch: PatchNote): Promise<Note> {
-  // `force` is TOP-LEVEL (nested → 428).
-  return request<Note>('PATCH', `/notes/${encodeURIComponent(id)}`, {
-    ...patch,
-    force: true,
-  })
+export async function patchNote(id: string, patch: PatchNote): Promise<Note> {
+  // `force` opts out of optimistic concurrency for unconditional writes.
+  return asNote(await requireClient().updateNote(id, { ...patch, force: true } as UpdateNotePayload))
 }
 
 // Optimistic-concurrency PATCH: applies only if the note's live `updated_at`
-// still equals `ifUpdatedAt`; otherwise the vault answers 409 and we throw a
-// VaultConflictError carrying the live updated_at (so the caller can reconcile).
-// NOTE: `if_updated_at` takes precedence over `force` server-side — we MUST NOT
-// send `force` here, or a stale precondition would still (correctly) 409.
-export function patchNoteIf(
+// still equals `ifUpdatedAt`; otherwise the client throws a VaultConflictError
+// carrying the live updated_at (so the caller can reconcile). MUST NOT send
+// `force` — `if_updated_at` is the whole point here.
+export async function patchNoteIf(
   id: string,
   patch: PatchNote,
   ifUpdatedAt: string,
 ): Promise<Note> {
-  return request<Note>('PATCH', `/notes/${encodeURIComponent(id)}`, {
-    ...patch,
-    if_updated_at: ifUpdatedAt,
-  })
+  return asNote(
+    await requireClient().updateNote(id, { ...patch, if_updated_at: ifUpdatedAt } as UpdateNotePayload),
+  )
 }
 
 // Refresh an entity's summary (metadata) + markdown content. When `ifUpdatedAt`
 // is given, the write is guarded (conflict-aware); otherwise it force-applies
-// (used by "re-apply on latest" after the human has reconciled). `idOrPath` may
-// be the entity path (the update_entity spec's `target`) or its id.
+// (used by "re-apply on latest" after the human has reconciled).
 export function updateEntityContent(
   idOrPath: string,
   content: string,
@@ -248,30 +126,27 @@ export interface CreateNote {
   metadata?: NoteMetadata
 }
 
-export function createNote(note: CreateNote): Promise<Note> {
-  return request<Note>('POST', '/notes', note)
+export async function createNote(note: CreateNote): Promise<Note> {
+  return asNote(await requireClient().createNote(note))
 }
 
 export function deleteNote(id: string): Promise<void> {
-  return request<void>('DELETE', `/notes/${encodeURIComponent(id)}`)
+  return requireClient().deleteNote(id)
 }
 
 // ---- Surfaces (the "For You" stream — prompts/reflections the AI poses) ----
 //
-// A surface is a note tagged `surface/*` with a `state` (open|resolved) the AI
-// puts in front of Aaron. Answered by a capture linking `responds-to` it;
-// answering auto-resolves it (the default). Few in number, so we fetch all and
-// split open/resolved client-side rather than relying on an indexed filter.
-// No include_links: nothing renders surface links, and link hydration is
-// vault-side expensive (~1s/note) — it took this query from 10ms to ~9s.
-export function listSurfaces(): Promise<Note[]> {
+// A surface is a note tagged `surface/*` with a `state` (open|resolved). Few in
+// number, so we fetch all and split open/resolved client-side. No include_links:
+// link hydration is vault-side expensive (~1s/note).
+export async function listSurfaces(): Promise<Note[]> {
   const p = new URLSearchParams()
   p.set('tag', 'surface')
   p.set('include_content', 'true')
   p.set('include_metadata', 'true')
   p.set('limit', '100')
   p.set('sort', 'desc')
-  return request<Note[]>('GET', `/notes?${p.toString()}`)
+  return asNotes(await requireClient().queryNotes(p))
 }
 
 export function resolveSurface(id: string): Promise<Note> {
@@ -280,10 +155,7 @@ export function resolveSurface(id: string): Promise<Note> {
 
 // ---- Weave triage ----
 //
-// "Unwoven" means *fresh loose threads*, not the whole historical archive (which
-// will never be fully woven, nor should it be). So: recent + linkless + not a
-// dream (complete as a dream) + not explicitly skipped. This is what the Weave
-// badge and the Unwoven tab count — the captures actually wanting attention.
+// "Unwoven" = fresh loose threads: recent + linkless + not a dream + not skipped.
 export async function listUnwovenCaptures(sinceDays = 14, limit = 80): Promise<Note[]> {
   const since = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10)
   const caps = await listNotes({
@@ -297,8 +169,7 @@ export async function listUnwovenCaptures(sinceDays = 14, limit = 80): Promise<N
   return caps.filter((c) => !(c.tags ?? []).some((t) => t === 'dream-log' || t === 'weave/skip'))
 }
 
-// Mark a capture as not needing weaving (additive tag — the sacred content is
-// untouched). Removes it from the unwoven queue + badge.
+// Mark a capture as not needing weaving (additive tag — sacred content untouched).
 export function skipWeave(id: string): Promise<Note> {
   return patchNote(id, { tags: { add: ['weave/skip'] } })
 }
@@ -308,13 +179,6 @@ export function reopenSurface(id: string): Promise<Note> {
 }
 
 // ---- Proposals (deterministic review surface — NO AI) ----
-//
-// Proposals are notes tagged `proposal` carrying a Weaver suggestion in their
-// metadata. Approving one runs plain vault calls: create the entity, link the
-// chosen captures, resolve the proposal. These helpers are small + typed and
-// are reused directly by the Proposals UI.
-
-import type { EntityType } from './types'
 
 // entity_type → path root folder (matches the vault's layout + WeaveEditor).
 export const ENTITY_FOLDER: Record<EntityType, string> = {
@@ -331,8 +195,7 @@ export const ENTITY_FOLDER: Record<EntityType, string> = {
 
 export type ProposalStatus = 'pending' | 'approved' | 'rejected'
 
-// The Weaver metadata carried on a `proposal` note (see data model). Kept as a
-// standalone shape (not extending NoteMetadata, whose `status` is narrower).
+// The Weaver metadata carried on a `proposal` note (see data model).
 export interface ProposalMeta {
   kind?: 'entity' | 'link'
   status?: ProposalStatus
@@ -344,9 +207,7 @@ export interface ProposalMeta {
   evidence?: string
   run?: string
   capture_id?: string
-  // Curated captures the AI judge confirmed refer to this entity (false
-  // positives dropped; disambiguated). When present + non-empty, these are the
-  // supporting captures — not a name search.
+  // Curated captures the AI judge confirmed refer to this entity.
   capture_ids?: string[]
   target_path?: string
   [key: string]: unknown
@@ -357,40 +218,37 @@ export function entityPath(type: EntityType, name: string): string {
   return `${ENTITY_FOLDER[type]}/${name.trim()}`
 }
 
-// The pending-proposals query: tag=proposal, status==pending. The vault now
-// filters server-side on the indexed `status` field via `?metadata={...}`
-// (vault#426, live), so we trust it — the old client-side filter is gone.
+// The pending-proposals query: tag=proposal, status==pending. Vault filters
+// server-side on the indexed `status` field via `?metadata={...}` (vault#426).
 export async function listPendingProposals(): Promise<Note[]> {
-  const meta = encodeURIComponent(JSON.stringify({ status: { eq: 'pending' } }))
-  return request<Note[]>(
-    'GET',
-    // include_content: the Weaver intent now lives in the note's JSON content
-    // (parsed into the editable form); metadata is kept for transition fallback.
-    `/notes?tag=proposal&metadata=${meta}&include_metadata=true&include_content=true&limit=200`,
-  )
+  const p = new URLSearchParams()
+  p.set('tag', 'proposal')
+  // include_content: the Weaver intent now lives in the note's JSON content.
+  p.set('metadata', JSON.stringify({ status: { eq: 'pending' } }))
+  p.set('include_metadata', 'true')
+  p.set('include_content', 'true')
+  p.set('limit', '200')
+  return asNotes(await requireClient().queryNotes(p))
 }
 
 // Rename/move a note to a new path. The note id is STABLE across a rename, so
-// every link pointing at it survives. Entity rename uses this (the display name
-// is the path leaf) — see RenameEntity.
-export function renameNotePath(id: string, newPath: string): Promise<Note> {
-  return request<Note>('PATCH', `/notes/${encodeURIComponent(id)}`, { path: newPath, force: true })
+// every link pointing at it survives.
+export async function renameNotePath(id: string, newPath: string): Promise<Note> {
+  return asNote(await requireClient().updateNote(id, { path: newPath, force: true }))
 }
 
-// Full-text search across ALL notes (not just captures), with content — used by
-// rename-with-propagation to find every place an old name/spelling appears.
-export function searchAllNotes(term: string): Promise<Note[]> {
+// Full-text search across ALL notes (not just captures), with content.
+export async function searchAllNotes(term: string): Promise<Note[]> {
   const p = new URLSearchParams()
   p.set('search', term)
   p.set('include_content', 'true')
   p.set('limit', '100')
-  return request<Note[]>('GET', `/notes?${p.toString()}`)
+  return asNotes(await requireClient().queryNotes(p))
 }
 
 // Add a value to an entity's `metadata.aliases` (string array), de-duped
 // case-insensitively. Reads the live note first so we don't clobber existing
-// aliases, then PATCHes the merged list. No-op (returns the note) if the alias
-// already exists. `idOrPath` may be an entity id or its path.
+// aliases, then PATCHes the merged list.
 export async function addAlias(idOrPath: string, alias: string): Promise<Note> {
   const value = alias.trim()
   const note = await getNote(idOrPath)
@@ -404,19 +262,18 @@ export async function addAlias(idOrPath: string, alias: string): Promise<Note> {
 }
 
 // Captures whose text mentions `term` — the supporting evidence for a proposal.
-export function searchCaptures(term: string): Promise<Note[]> {
+export async function searchCaptures(term: string): Promise<Note[]> {
   const p = new URLSearchParams()
   p.set('tag', 'capture')
   p.set('search', term)
   p.set('include_content', 'false')
   p.set('limit', '50')
-  return request<Note[]>('GET', `/notes?${p.toString()}`)
+  return asNotes(await requireClient().queryNotes(p))
 }
 
 // Fetch specific captures by id — the curated set a proposal's
-// `metadata.capture_ids` points at. Each id is fetched via GET /api/notes/{id}.
-// Missing/failed ids are skipped (a curated id may have been deleted) so the
-// card still loads with whatever resolves. Order follows the input id list.
+// `metadata.capture_ids` points at. Missing/failed ids are skipped so the card
+// still loads with whatever resolves. Order follows the input id list.
 export async function fetchCapturesByIds(ids: string[]): Promise<Note[]> {
   const settled = await Promise.allSettled(ids.map((id) => getNote(id)))
   const out: Note[] = []
@@ -427,11 +284,8 @@ export async function fetchCapturesByIds(ids: string[]): Promise<Note[]> {
 }
 
 // Create the entity note at `<Root>/<name>`; it inherits the `entity` parent
-// automatically via its type tag. `aliases` (optional) are written to
-// metadata.aliases so short forms (e.g. "Ji" → "Sandhiji Davis") resolve later.
-// `fields` (optional) are type-specific metadata (project→{status,role},
-// person→{relation}, …) merged into the entity's metadata verbatim. Empty
-// values are dropped so e.g. a blank role doesn't write an empty key.
+// automatically via its type tag. `aliases` are written to metadata.aliases;
+// `fields` are type-specific metadata merged in (empty values dropped).
 export function createEntity(
   type: EntityType,
   name: string,
@@ -487,8 +341,7 @@ export function resolveProposal(id: string, status: ProposalStatus): Promise<Not
 }
 
 // Resolve a proposal AND persist the (edited) intent into its content, so the
-// note records exactly what was executed. `content` is the JSON.stringify'd
-// spec; status flips to the given value (usually 'approved').
+// note records exactly what was executed.
 export function resolveProposalWithSpec(
   id: string,
   content: string,
@@ -519,92 +372,40 @@ export interface StorageUploadResult {
   mimeType: string
 }
 
-// Run a non-JSON request (blob GET / multipart POST) with the same
-// auth + OAuth-refresh-on-401 contract as `request`. `build` is given a
-// token and returns the fetch args so we can re-run it with a fresh token.
-async function authedFetch(
-  build: (origin: string, token: string) => [string, RequestInit],
-): Promise<Response> {
-  const { origin, token } = requireConfig()
-  const run = async (tok: string) => {
-    const [url, init] = build(origin, tok)
-    return fetch(url, init)
-  }
-  let res: Response
-  try {
-    res = await run(token)
-  } catch (e) {
-    throw new VaultError(
-      0,
-      `Could not reach the vault at ${origin}. (${e instanceof Error ? e.message : String(e)})`,
-    )
-  }
-  if (res.status === 401 && isOAuth()) {
-    const fresh = await tryRefresh()
-    if (fresh) res = await run(fresh)
-  }
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      const hint = isOAuth()
-        ? 'Your session expired — sign in again.'
-        : 'Your token may be expired — re-paste it.'
-      throw new VaultError(res.status, `Auth failed (${res.status}). ${hint}`)
-    }
-    throw new VaultError(res.status, `${res.status} ${res.statusText}`)
-  }
-  return res
-}
-
 // Fetch a stored file (e.g. a voice memo) as a Blob, WITH the bearer header.
-// A bare <audio src> can't carry the header, so callers turn this into an
-// object URL. `path` is the attachment's storage path (no leading slash).
-export async function fetchStorageBlob(path: string): Promise<Blob> {
-  const clean = path.replace(/^\/+/, '')
-  const res = await authedFetch((origin, token) => [
-    `${origin}/api/storage/${clean}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  ])
-  return res.blob()
+// A bare <audio src> can't carry the header, so callers turn this into an object
+// URL. `path` is the attachment's storage path (the client accepts a bare path).
+export function fetchStorageBlob(path: string): Promise<Blob> {
+  return requireClient().fetchAttachmentBlob(path)
 }
 
-// Upload a file to vault storage. Confirmed live: multipart field name is
-// `file`; the result is { path, size, mimeType }.
-export async function uploadStorageFile(file: File): Promise<StorageUploadResult> {
-  const res = await authedFetch((origin, token) => {
-    const form = new FormData()
-    form.append('file', file)
-    return [
-      `${origin}/api/storage/upload`,
-      { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
-    ]
-  })
-  return (await res.json()) as StorageUploadResult
+// Upload a file to vault storage. Result is { path, size, mimeType }.
+export function uploadStorageFile(file: File): Promise<StorageUploadResult> {
+  return requireClient().uploadStorageFile(file)
 }
 
 // Attach an uploaded file to a note (+ optionally kick off transcription).
-export function addAttachment(
+export async function addAttachment(
   noteId: string,
   body: { path: string; mimeType: string; transcribe?: boolean },
 ): Promise<Attachment> {
-  return request<Attachment>(
-    'POST',
-    `/notes/${encodeURIComponent(noteId)}/attachments`,
-    body,
-  )
+  return (await requireClient().addAttachment(noteId, body)) as unknown as Attachment
 }
 
 // ---- Tags ----
 
-export function listTags(): Promise<TagRecord[]> {
-  // include_schema → description, fields, parent_names, relationships, timestamps.
-  return request<TagRecord[]>('GET', '/tags?include_schema=true')
+export async function listTags(): Promise<TagRecord[]> {
+  // includeSchema → description, fields, parent_names, relationships, timestamps.
+  return (await requireClient().listTags({ includeSchema: true })) as unknown as TagRecord[]
 }
 
-export function getTag(name: string): Promise<TagRecord> {
-  return request<TagRecord>('GET', `/tags/${encodeURIComponent(name)}`)
+export async function getTag(name: string): Promise<TagRecord> {
+  const t = await requireClient().getTag(name)
+  if (!t) throw new VaultNotFoundError(`Tag not found: ${name}`)
+  return t as unknown as TagRecord
 }
 
-// Quick connectivity probe used by the config screen.
+// Quick connectivity probe used by the connect screen's paste-token path.
 export async function ping(origin: string, token: string): Promise<void> {
   const res = await fetch(`${origin.replace(/\/+$/, '')}/api/notes?limit=1`, {
     headers: { Authorization: `Bearer ${token}` },

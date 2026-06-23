@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Note } from '../vault/types'
-import { subscribeNotes } from '../vault/sse'
+import { getClient } from '../vault/surface'
 import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { SenderChip } from '../components/ChannelMessageCard'
@@ -80,29 +80,37 @@ export function Channels() {
   const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
 
   useEffect(() => {
+    const client = getClient()
+    if (!client) return
     const inChannel = (n: Note) => noteAgentKey(n) === channel
-    const unsub = subscribeNotes(
+    // VaultClient.subscribe carries the bearer in the Authorization header (no
+    // token in the query string) and self-corrects on reconnect with a fresh
+    // snapshot + refresh-on-401. onStatus drives the live indicator.
+    const unsub = client.subscribe(
       { tag: MSG_TAG },
       {
         onSnapshot: (notes) => {
           const m = new Map<string, Note>()
-          for (const n of notes) if (inChannel(n)) m.set(n.id, n)
+          for (const n of notes as unknown as Note[]) if (inChannel(n)) m.set(n.id, n)
           setMsgs(m)
           setLive(true)
         },
-        onUpsert: (n) =>
+        onUpsert: (note) => {
+          const n = note as unknown as Note
           setMsgs((prev) => {
             if (!inChannel(n)) return prev
             const next = new Map(prev)
             next.set(n.id, n)
             return next
-          }),
+          })
+        },
         onRemove: (id) =>
           setMsgs((prev) => {
             const next = new Map(prev)
             next.delete(id)
             return next
           }),
+        onStatus: (s) => setLive(s === 'open'),
         onError: () => setLive(false),
       },
     )
@@ -117,17 +125,22 @@ export function Channels() {
   useEffect(() => {
     threadsRef.current = new Map()
     setThinking(false)
+    const client = getClient()
+    if (!client) return
     const forAgent = (n: Note) => noteAgentKey(n) === channel
     const isWorking = (n: Note) => String(n.metadata?.status ?? '') === 'working'
     const recompute = () => setThinking([...threadsRef.current.values()].some(isWorking))
-    const unsub = subscribeNotes(
+    const unsub = client.subscribe(
       { tag: THREAD_TAG },
       {
         onSnapshot: (notes) => {
-          threadsRef.current = new Map(notes.filter(forAgent).map((n) => [n.id, n]))
+          threadsRef.current = new Map(
+            (notes as unknown as Note[]).filter(forAgent).map((n) => [n.id, n]),
+          )
           recompute()
         },
-        onUpsert: (n) => {
+        onUpsert: (note) => {
+          const n = note as unknown as Note
           if (!forAgent(n)) return
           threadsRef.current.set(n.id, n)
           recompute()

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { completeOAuth, PendingApprovalError, loadPendingOAuth } from '../vault/oauth'
+import { PendingApprovalError } from '@openparachute/surface-client'
+import { handleVaultCallback } from '../vault/surface'
 import { completeAgentOAuth, loadAgentPendingOAuth, persistAgentToken } from '../vault/agentAuth'
-import { setAuth, setConfig } from '../vault/config'
 import { Seed } from '../components/icons'
 
 // Landing route for the OAuth redirect: /oauth/callback?code=…&state=…
@@ -36,8 +36,10 @@ export function OAuthCallback() {
     }
 
     // One callback, two flows. Route by which pending slot owns this `state`.
-    // Agent flow (agent:read) is isolated under its own keys; the vault flow is
-    // the default. We don't touch the other flow's pending — it stays for retry.
+    // The agent flow (agent:read) is isolated under its own keys and still
+    // hand-rolled (P2); the vault flow is owned by surface-client. Check the
+    // agent flow first — if its state doesn't match, hand off to the vault flow,
+    // which verifies state against the library's own pending.
     const agentPending = loadAgentPendingOAuth()
     if (agentPending && agentPending.state === state) {
       completeAgentOAuth(code, state)
@@ -49,27 +51,8 @@ export function OAuthCallback() {
       return
     }
 
-    const vaultPending = loadPendingOAuth()
-    if (!vaultPending || vaultPending.state !== state) {
-      setError('Sign-in state does not match a pending flow. Start again from the connect screen.')
-      return
-    }
-
-    completeOAuth(code, state)
-      .then(({ pending, token }) => {
-        // Data calls go to the entered vault URL, not the issuer origin.
-        setConfig({ origin: pending.vaultUrl, token: token.access_token })
-        setAuth({
-          method: 'oauth',
-          issuer: pending.issuer,
-          tokenEndpoint: pending.tokenEndpoint,
-          clientId: pending.clientId,
-          refreshToken: token.refresh_token,
-          scope: token.scope ?? pending.scope,
-          expiresAt: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
-        })
-        nav('/', { replace: true })
-      })
+    handleVaultCallback()
+      .then(() => nav('/', { replace: true }))
       .catch((err) => {
         if (err instanceof PendingApprovalError) {
           setApproveUrl(err.approveUrl)
