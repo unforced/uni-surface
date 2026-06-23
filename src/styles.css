@@ -1416,6 +1416,29 @@ button { font-family: inherit; cursor: pointer; }
 .pc-update-current-summary { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 10px; line-height: 1.5; }
 .pc-update-current-body .markdown { font-size: 14px; line-height: 1.55; }
 
+/* What a delta/addendum update_entity proposal will ADD (rendered intent). */
+.pc-update-deltas {
+  margin-top: 14px; padding: 12px 15px;
+  background: var(--moss-wash); border: 1px solid var(--sage-soft); border-left: 3px solid var(--sage);
+  border-radius: 13px;
+}
+.pc-delta-line { font-size: 13.5px; color: var(--ink); line-height: 1.5; margin: 6px 0 0; }
+.pc-delta-tag {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+  color: var(--sage); margin-right: 6px;
+}
+.pc-delta-loops { margin: 6px 0 0; padding-left: 20px; font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+.pc-delta-hint { font-size: 11.5px; color: var(--ink-faint); margin: 8px 0 0; font-style: italic; }
+
+/* Data-loss guard: a blank-over-non-empty update_entity write is blocked. */
+.pc-erase-guard {
+  margin-top: 14px; padding: 12px 15px;
+  background: color-mix(in srgb, var(--clay) 12%, var(--surface));
+  border: 1px solid var(--clay); border-left: 3px solid var(--clay);
+  border-radius: 13px; font-size: 13.5px; color: var(--ink); line-height: 1.5;
+}
+.pc-erase-guard strong { color: var(--clay); font-weight: 600; }
+
 /* ── Offline / sync (PWA) ── */
 
 /* Optimistic, not-yet-synced capture card: gently faded, not clickable. */

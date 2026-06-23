@@ -58,12 +58,24 @@ export interface SpecLinks {
 // The `update_entity` kind: a proposal to REFRESH an existing entity's summary
 // + content (no new entity, no capture links). It carries the target path, the
 // entity's `updated_at` AT THE TIME THE PROPOSAL WAS MADE (for optimistic
-// concurrency on accept), and the proposed new summary + markdown content.
+// concurrency on accept), and the proposed update.
+//
+// Two shapes coexist on disk:
+//   - **full-replace**: an explicit `content` (the whole new dossier body).
+//   - **delta/addendum** (what the Weaver actually emits): NO `content`, just
+//     surgical additions — `where_it_stands_addendum`, `open_loops_add`,
+//     `open_questions_resolved_note`. These are APPLIED ONTO the current dossier
+//     (never replace it), so an update can only add, never erase.
+// The review card computes the proposed body via `applyDossierDeltas` and
+// guards hard against ever writing empty over a non-empty dossier.
 export interface SpecUpdate {
   target: string
   baseUpdatedAt: string
   summary: string
   content: string
+  whereItStandsAddendum?: string
+  openLoopsAdd?: string[]
+  openQuestionsResolvedNote?: string
 }
 
 export interface ProposalSpec {
@@ -234,7 +246,13 @@ export function parseProposalSpec(note: Note): ProposalSpec {
       const parsed = JSON.parse(raw) as Partial<ProposalSpec> & {
         target?: unknown
         base_updated_at?: unknown
-        update?: { summary?: unknown; content?: unknown }
+        update?: {
+          summary?: unknown
+          content?: unknown
+          where_it_stands_addendum?: unknown
+          open_loops_add?: unknown
+          open_questions_resolved_note?: unknown
+        }
       }
       // ── update_entity: a refresh of an existing entity's summary + content. ──
       if (parsed && typeof parsed === 'object' && parsed.kind === 'update_entity') {
@@ -262,6 +280,11 @@ export function parseProposalSpec(note: Note): ProposalSpec {
             baseUpdatedAt: String(parsed.base_updated_at ?? ''),
             summary: String(parsed.update?.summary ?? ''),
             content: String(parsed.update?.content ?? ''),
+            whereItStandsAddendum:
+              String(parsed.update?.where_it_stands_addendum ?? '').trim() || undefined,
+            openLoopsAdd: asStringArray(parsed.update?.open_loops_add),
+            openQuestionsResolvedNote:
+              String(parsed.update?.open_questions_resolved_note ?? '').trim() || undefined,
           },
         }
       }
@@ -317,4 +340,88 @@ export function withName(spec: ProposalSpec, name: string): ProposalSpec {
     ...spec,
     entity: { ...spec.entity, name, path: specPath(spec.entity.type, name) },
   }
+}
+
+// ── update_entity delta application ──
+
+// Does this update carry surgical delta/addendum fields (vs an explicit full
+// content replace)? When true, the proposed body is computed from the CURRENT
+// dossier + these deltas — never an empty full-replace.
+export function hasUpdateDeltas(u: SpecUpdate): boolean {
+  return Boolean(
+    u.whereItStandsAddendum ||
+      (u.openLoopsAdd && u.openLoopsAdd.length) ||
+      u.openQuestionsResolvedNote,
+  )
+}
+
+// Insert `text` at the end of the markdown section whose heading matches
+// `headingRe`; if no such section exists, append a new `## fallbackHeading`
+// section (or, with no fallback, just append). Only ever ADDS — the existing
+// body is preserved verbatim. Excess blank lines are collapsed.
+function appendToSection(
+  body: string,
+  headingRe: RegExp,
+  text: string,
+  fallbackHeading?: string,
+): string {
+  const isHeading = (l: string) => /^#{1,6}\s/.test(l)
+  const lines = body.split('\n')
+  let start = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (isHeading(lines[i]) && headingRe.test(lines[i])) {
+      start = i
+      break
+    }
+  }
+  if (start === -1) {
+    const head = fallbackHeading ? `\n\n## ${fallbackHeading}\n` : '\n'
+    return `${body}${head}\n${text}`.replace(/\n{3,}/g, '\n\n').trimEnd()
+  }
+  // The section runs until the next heading (any level) or EOF.
+  let end = lines.length
+  for (let i = start + 1; i < lines.length; i++) {
+    if (isHeading(lines[i])) {
+      end = i
+      break
+    }
+  }
+  // Insert after the section's last non-blank line.
+  let insertAt = end
+  while (insertAt > start + 1 && lines[insertAt - 1].trim() === '') insertAt--
+  const out = [...lines.slice(0, insertAt), '', text, '', ...lines.slice(insertAt)]
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()
+}
+
+// Compute the proposed dossier body for an update_entity proposal:
+//   - **full-replace**: an explicit `content` wins (returned as-is).
+//   - **delta**: apply each addendum field onto `current` deterministically
+//     (section-aware append, with a new-section fallback), so the result is
+//     `current` + the additions — the body can never be erased.
+// Returns `current` unchanged when there's nothing to apply.
+export function applyDossierDeltas(current: string, u: SpecUpdate): string {
+  if (u.content.trim()) return u.content
+  if (!hasUpdateDeltas(u)) return current
+  let body = current.replace(/\s+$/, '')
+  if (u.whereItStandsAddendum) {
+    body = appendToSection(
+      body,
+      /where it stands|where it'?s at|current state|status/i,
+      u.whereItStandsAddendum,
+      'Where it stands',
+    )
+  }
+  if (u.openLoopsAdd && u.openLoopsAdd.length) {
+    const bullets = u.openLoopsAdd.map((l) => `- ${l}`).join('\n')
+    body = appendToSection(body, /open loops|open questions|next steps|loops/i, bullets, 'Open loops')
+  }
+  if (u.openQuestionsResolvedNote) {
+    body = appendToSection(
+      body,
+      /open questions|open loops|resolved/i,
+      `_Resolved: ${u.openQuestionsResolvedNote}_`,
+      'Notes',
+    )
+  }
+  return body
 }

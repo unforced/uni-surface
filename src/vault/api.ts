@@ -218,13 +218,24 @@ export function entityPath(type: EntityType, name: string): string {
   return `${ENTITY_FOLDER[type]}/${name.trim()}`
 }
 
-// The pending-proposals query: tag=proposal, status==pending. Vault filters
-// server-side on the indexed `status` field via `?metadata={...}` (vault#426).
+// The pending-proposals query: tag=proposal, NOT terminally decided. Vault
+// filters server-side on the indexed `status` field via `?metadata={...}`
+// (vault#426).
+//
+// We query `status NOT IN [approved, rejected]` rather than `== pending` on
+// purpose: the vault's schema validation is WARN, not reject (a non-conforming
+// status like the Weaver's old `"new"` is stored + flagged in
+// `validation_status`, not refused). An exact `== pending` filter silently drops
+// any drifted value — which is exactly how 8 proposals vanished for ~2 weeks.
+// `not_in [approved, rejected]` is the resilient consumer belt: anything not yet
+// decided (pending, or any drifted/unknown status) still surfaces for review, so
+// a producer/consumer format drift fails loud instead of disappearing. The
+// schema enum (now on `proposal.status`) is the matching producer-side flag.
 export async function listPendingProposals(): Promise<Note[]> {
   const p = new URLSearchParams()
   p.set('tag', 'proposal')
   // include_content: the Weaver intent now lives in the note's JSON content.
-  p.set('metadata', JSON.stringify({ status: { eq: 'pending' } }))
+  p.set('metadata', JSON.stringify({ status: { not_in: ['approved', 'rejected'] } }))
   p.set('include_metadata', 'true')
   p.set('include_content', 'true')
   p.set('limit', '200')

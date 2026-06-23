@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getNote,
@@ -11,6 +11,7 @@ import type { Note } from '../vault/types'
 import { entityTypeOf } from '../vault/types'
 import { entityHref } from '../vault/util'
 import type { ProposalSpec } from '../vault/proposalSpec'
+import { applyDossierDeltas, hasUpdateDeltas } from '../vault/proposalSpec'
 import { Markdown } from './Markdown'
 
 // ── Render + accept an `update_entity` proposal ──
@@ -33,9 +34,18 @@ export function UpdateEntityCard({
   const target = update.target
   const type = spec.entity.type
 
-  // Editable proposal payload (seeded from the spec; only written on Accept).
+  // Whether the Weaver sent a delta/addendum update (no full `content`) — then
+  // the proposed body is computed by applying the deltas onto the CURRENT
+  // dossier once it loads, never an empty replace.
+  const deltaMode = !update.content.trim() && hasUpdateDeltas(update)
+
+  // Editable proposal payload. In full-replace mode it's the spec's content; in
+  // delta mode it's seeded from current+deltas after the load effect runs.
   const [draftContent, setDraftContent] = useState(update.content)
   const [draftSummary, setDraftSummary] = useState(update.summary)
+  // Once the human edits the body, stop re-seeding it from the deltas.
+  const contentDirty = useRef(false)
+  const seeded = useRef(false)
 
   // The live entity (for the "current" before-pane + its live updated_at, which
   // we compare against base_updated_at to detect staleness up front).
@@ -60,6 +70,13 @@ export function UpdateEntityCard({
         const note = await getNote(target, { includeLinks: false })
         if (cancelled) return
         setCurrent(note)
+        // Delta/addendum proposals carry no full `content` — compute the proposed
+        // body by applying the deltas onto the freshly-loaded current dossier, so
+        // the body is current + additions (never blank).
+        if (deltaMode && !seeded.current && !contentDirty.current) {
+          setDraftContent(applyDossierDeltas(note.content ?? '', update))
+        }
+        seeded.current = true
         // Pre-flight staleness: if the live updated_at already differs from the
         // base the proposal was computed against, warn before the human edits.
         if (update.baseUpdatedAt && note.updatedAt && note.updatedAt !== update.baseUpdatedAt) {
@@ -83,33 +100,51 @@ export function UpdateEntityCard({
   const confPct = Math.round(spec.confidence * 100)
   const effectiveType = (current ? entityTypeOf(current) : null) ?? type
 
+  // ── SAFETY: never write empty/blank content over a non-empty dossier. ──
+  // This is the data-loss guard: a delta-only proposal whose deltas didn't yet
+  // resolve to a body, or a hand-cleared editor, must not erase the entity.
+  const proposedBlank = draftContent.trim().length === 0
+  const currentNonEmpty = currentContent.trim().length > 0
+  const wouldErase = proposedBlank && currentNonEmpty
+  // If the current dossier failed to load, we can't verify a blank write is
+  // safe — refuse it rather than risk erasing an unseen body.
+  const cannotVerify = proposedBlank && loadError !== null
+  const blockApply = wouldErase || cannotVerify
+
   // The edited spec to persist on resolve (records exactly what was applied).
-  const executedSpecJson = useMemo(
-    () =>
-      JSON.stringify({
-        v: spec.v,
-        kind: 'update_entity',
-        target,
-        confidence: spec.confidence,
-        evidence: spec.evidence,
-        base_updated_at: update.baseUpdatedAt,
-        update: { summary: draftSummary, content: draftContent },
-      }),
-    [spec, target, update.baseUpdatedAt, draftSummary, draftContent],
-  )
+  // Built from the body actually written, so the conflict re-merge path records
+  // the merged result, not a stale draft.
+  const buildExecutedJson = (content: string) =>
+    JSON.stringify({
+      v: spec.v,
+      kind: 'update_entity',
+      target,
+      confidence: spec.confidence,
+      evidence: spec.evidence,
+      base_updated_at: update.baseUpdatedAt,
+      update: { summary: draftSummary, content },
+    })
 
   // Apply the (edited) update, then resolve the proposal. `guard` decides the
   // concurrency mode: when set, the write is conditioned on that updated_at; on
   // a 409 we record the conflict instead of clobbering. When `guard` is null the
   // write force-applies (the "re-apply on latest" path, after reconciling).
   async function applyUpdate(guard: string | null) {
+    // Defense in depth: the button is disabled when blocked, but never let a
+    // blank-over-non-empty write through even if a code path reaches here.
+    if (blockApply) {
+      setError(
+        'This update has no proposed content — applying it would erase the current dossier. Blocked.',
+      )
+      return
+    }
     setBusy(true)
     setError(null)
     try {
       setProgress(`Updating ${target}…`)
       await updateEntityContent(target, draftContent, draftSummary, guard ?? undefined)
       setProgress('Resolving proposal…')
-      await resolveProposalWithSpec(proposal.id, executedSpecJson, 'approved')
+      await resolveProposalWithSpec(proposal.id, buildExecutedJson(draftContent), 'approved')
       onResolved(proposal.id, `Updated ${target} 🌿`)
     } catch (e) {
       if (e instanceof VaultConflictError) {
@@ -149,10 +184,24 @@ export function UpdateEntityCard({
       setCurrent(fresh)
       setShowCurrent(true)
       setConflict(null)
+      // Delta mode: re-apply the deltas onto the FRESH dossier (the prior merge
+      // was against a now-stale body), unless the human hand-edited.
+      let bodyToWrite = draftContent
+      if (deltaMode && !contentDirty.current) {
+        bodyToWrite = applyDossierDeltas(fresh.content ?? '', update)
+        setDraftContent(bodyToWrite)
+      }
+      // Guard: never blank a non-empty fresh dossier.
+      if (!bodyToWrite.trim() && (fresh.content ?? '').trim()) {
+        setError('This update has no content to apply — it would erase the dossier. Skipped to protect it.')
+        setBusy(false)
+        setProgress(null)
+        return
+      }
       // Write guarded by the freshly-read updated_at.
-      await updateEntityContent(target, draftContent, draftSummary, fresh.updatedAt)
+      await updateEntityContent(target, bodyToWrite, draftSummary, fresh.updatedAt)
       setProgress('Resolving proposal…')
-      await resolveProposalWithSpec(proposal.id, executedSpecJson, 'approved')
+      await resolveProposalWithSpec(proposal.id, buildExecutedJson(bodyToWrite), 'approved')
       onResolved(proposal.id, `Updated ${target} (re-applied on latest) 🌿`)
     } catch (e) {
       if (e instanceof VaultConflictError) {
@@ -219,6 +268,42 @@ export function UpdateEntityCard({
           >
             Re-apply on latest
           </button>
+        </div>
+      )}
+
+      {/* ── What a delta/addendum update will ADD (rendered intent, not empty) ── */}
+      {deltaMode && (
+        <div className="pc-update-deltas">
+          <div className="pc-pane-label">What this update adds</div>
+          {update.whereItStandsAddendum && (
+            <p className="pc-delta-line">
+              <span className="pc-delta-tag">where it stands</span> {update.whereItStandsAddendum}
+            </p>
+          )}
+          {update.openLoopsAdd && update.openLoopsAdd.length > 0 && (
+            <ul className="pc-delta-loops">
+              {update.openLoopsAdd.map((l, i) => (
+                <li key={i}>{l}</li>
+              ))}
+            </ul>
+          )}
+          {update.openQuestionsResolvedNote && (
+            <p className="pc-delta-line">
+              <span className="pc-delta-tag">resolved</span> {update.openQuestionsResolvedNote}
+            </p>
+          )}
+          <p className="pc-delta-hint">
+            Applied onto the current dossier below — additions only, never a replace. Edit freely.
+          </p>
+        </div>
+      )}
+
+      {/* ── SAFETY: refuse to write empty over a non-empty dossier. ── */}
+      {blockApply && (
+        <div className="pc-erase-guard">
+          ⚠ This update has no proposed body
+          {cannotVerify ? " and the current dossier couldn't be loaded" : ''} — applying it would{' '}
+          <strong>erase {target}</strong>. Accept is blocked. Add content above, or Skip.
         </div>
       )}
 
@@ -300,11 +385,13 @@ export function UpdateEntityCard({
         <button
           className="btn pc-accept"
           onClick={accept}
-          disabled={busy || loadingCurrent || conflict !== null}
+          disabled={busy || loadingCurrent || conflict !== null || blockApply}
           title={
-            conflict
-              ? 'This entity changed since the proposal — use “Re-apply on latest”.'
-              : 'Apply this update'
+            blockApply
+              ? 'Blocked: this update has no content and would erase the dossier.'
+              : conflict
+                ? 'This entity changed since the proposal — use “Re-apply on latest”.'
+                : 'Apply this update'
           }
         >
           {busy ? (progress ?? 'Working…') : 'Accept · update'}
