@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { patchNote, renameNotePath, deleteNote } from '../vault/api'
-import { agentHref } from '../vault/channels'
+import { RespondMenu } from './RespondMenu'
 import type { Note } from '../vault/types'
 
 // Reusable note plumbing: the path + id (copyable, so the structure is legible
@@ -34,7 +33,6 @@ export function NoteControls({
   const [deleting, setDeleting] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState<'path' | 'id' | null>(null)
-  const nav = useNavigate()
 
   function copy(kind: 'path' | 'id', text: string) {
     void navigator.clipboard?.writeText(text)
@@ -138,13 +136,7 @@ export function NoteControls({
           <button className="nc-btn" onClick={() => { setDraft(note.content ?? ''); setEditing(true) }}>
             Edit
           </button>
-          <button
-            className="nc-btn"
-            onClick={() => nav(`${agentHref('uni')}?ref=${encodeURIComponent(note.path)}`)}
-            title="Bring this note into a message to Uni"
-          >
-            Reference in Uni →
-          </button>
+          <RespondMenu notePath={note.path} label="Reference" className="nc-respond" />
           <button className="nc-btn nc-danger" onClick={remove} disabled={deleting}>
             {deleting ? 'Deleting…' : 'Delete'}
           </button>

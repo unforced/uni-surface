@@ -174,11 +174,15 @@ export function Home() {
       {/* Attention ledger */}
       <div className="hm-ledger">
         <div className="hm-ledger-line">
-          <span className="hm-waiting">
-            {ledger.waiting > 0
-              ? `${ledger.waiting} decision${ledger.waiting === 1 ? '' : 's'} waiting`
-              : 'Nothing needs you'}
-          </span>
+          {/* Calm, not a counter: a named pointer to the For You feed, never an
+              opaque "N decisions waiting" tollbooth. */}
+          {ledger.waiting > 0 ? (
+            <Link className="hm-waiting hm-waiting-link" to="/inbox">
+              Some things are for you →
+            </Link>
+          ) : (
+            <span className="hm-waiting">Nothing needs you</span>
+          )}
           {ledger.latestReport && (
             <span className="hm-reported">
               · {senderLabel(senderOf(ledger.latestReport))} reported{' '}

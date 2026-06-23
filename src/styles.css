@@ -2090,3 +2090,93 @@ button { font-family: inherit; cursor: pointer; }
 .uni-log-row:hover { border-color: var(--clay-soft); }
 .uni-log-title { font-size: 13px; font-weight: 600; color: var(--ink); }
 .uni-log-sum { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+
+/* ── For You feed ─────────────────────────────────────────────────────────
+   The membrane of the proactive system: named cards (surfaces/noticings,
+   proposals, reports-with-asks), each Respond/Dismiss. Calm, never a counter. */
+.fy-feed { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.fy-card {
+  background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--line);
+  border-radius: var(--r-md); padding: 13px 16px 12px; box-shadow: var(--shadow-soft);
+}
+.fy-card:hover { box-shadow: var(--shadow-lift); }
+.fy-surface { border-left-color: var(--clay-soft); }
+.fy-proposal { border-left-color: var(--gold); }
+.fy-report { border-left-color: var(--sage-soft); }
+.fy-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.fy-spacer { flex: 1; }
+.fy-kind {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: lowercase;
+  color: var(--clay); background: var(--terracotta-wash); border-radius: var(--r-pill);
+  padding: 2px 9px;
+}
+.fy-proposal .fy-kind { color: var(--gold); background: rgba(199, 154, 62, 0.14); }
+.fy-report .fy-kind { color: var(--sage); background: var(--moss-wash); }
+.fy-domain { font-size: 11px; color: var(--ink-faint); background: var(--cream-2); border-radius: var(--r-pill); padding: 2px 9px; }
+.fy-asks { font-size: 11px; font-weight: 600; color: var(--clay); }
+.fy-when { font-size: 11.5px; color: var(--ink-faint); }
+.fy-body { font-size: 14px; line-height: 1.56; color: var(--ink); }
+.fy-body .markdown p { margin: 2px 0; }
+.fy-body a { color: var(--clay); border-bottom: 1px solid var(--terracotta-wash); }
+.fy-prop-title { font-weight: 600; color: var(--ink); }
+.fy-prop-why { margin: 4px 0 0; font-size: 13px; color: var(--ink-soft); }
+.fy-actions { display: flex; align-items: center; gap: 12px; margin-top: 11px; }
+.fy-review { font-size: 12.5px; color: var(--ink-soft); text-decoration: none; }
+.fy-review:hover { color: var(--clay); }
+.fy-dismiss {
+  background: none; border: none; cursor: pointer; font-family: var(--sans);
+  font-size: 13px; color: var(--ink-faint); padding: 4px 2px;
+}
+.fy-dismiss:hover { color: var(--ink-soft); }
+
+.fy-quiet { text-align: center; padding: 56px 20px; color: var(--ink-soft); }
+.fy-quiet-art { font-size: 34px; display: block; margin-bottom: 12px; }
+.fy-quiet-title { font-family: var(--serif); font-size: 19px; color: var(--ink); margin-bottom: 6px; }
+.fy-quiet-sub { font-size: 14px; line-height: 1.55; max-width: 420px; margin: 0 auto; }
+
+.fy-dismissed { margin-top: 22px; }
+.fy-feed-dim .fy-card-dim { opacity: 0.6; box-shadow: none; }
+.fy-feed-dim .fy-card-dim:hover { opacity: 1; }
+.fy-body-dim { font-size: 13px; color: var(--ink-soft); }
+.fy-restore {
+  background: none; border: none; cursor: pointer; font-family: var(--sans);
+  font-size: 12.5px; color: var(--clay); padding: 2px 4px;
+}
+.fy-restore:hover { text-decoration: underline; }
+
+.hm-waiting-link { text-decoration: none; color: var(--clay); }
+.hm-waiting-link:hover { text-decoration: underline; }
+
+/* ── Respond split-button + agent picker (the generalized "Reference in X") ── */
+.respond { position: relative; display: inline-flex; align-items: stretch; }
+.respond-main {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--terracotta-wash);
+  color: var(--clay); border: none; border-radius: var(--r-pill) 0 0 var(--r-pill);
+  padding: 6px 12px; font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.respond-main:hover { background: var(--clay); color: #fff; }
+.respond-arrow { font-size: 13px; line-height: 1; }
+.respond-caret {
+  background: var(--terracotta-wash); color: var(--clay); border: none;
+  border-left: 1px solid rgba(192, 107, 74, 0.22); border-radius: 0 var(--r-pill) var(--r-pill) 0;
+  padding: 6px 9px; font-size: 11px; cursor: pointer;
+}
+.respond-caret:hover { background: var(--clay); color: #fff; }
+.respond-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 50; min-width: 220px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow-lift); padding: 6px; display: flex; flex-direction: column;
+}
+.respond-pop-head { font-size: 11px; color: var(--ink-faint); padding: 4px 10px 6px; letter-spacing: 0.03em; }
+.respond-pop-empty { font-size: 13px; color: var(--ink-faint); padding: 6px 10px; }
+.respond-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: none; border: none; border-radius: 8px; padding: 7px 10px; cursor: pointer;
+  font-family: var(--sans); font-size: 13.5px; color: var(--ink);
+}
+.respond-item:hover { background: var(--surface-2); }
+.respond-item-sum { color: var(--ink-faint); font-size: 12px; margin-left: auto; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc-respond .respond-main { background: none; border: 1px solid var(--line); color: var(--ink-soft); border-radius: 8px 0 0 8px; font-weight: 450; padding: 5px 10px; }
+.nc-respond .respond-main:hover { border-color: var(--clay-soft); color: var(--clay); background: none; }
+.nc-respond .respond-caret { background: none; border: 1px solid var(--line); border-left: none; color: var(--ink-faint); border-radius: 0 8px 8px 0; }
+.nc-respond .respond-caret:hover { color: var(--clay); background: none; }
