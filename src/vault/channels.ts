@@ -385,39 +385,23 @@ export function selectChannel(channel: string) {
 // by name; the thread note back-links its definition via metadata.definition).
 export const agentHref = (name: string) => `/agent/${encodeURIComponent(name)}`
 
-// ---- Seen-state (local only — which arm messages Aaron's feed has shown) ----
+// ---- Read-state (vault-backed — cross-device) ----
+//
+// "Read" lives on the message note itself (`metadata.read: true`), set when
+// Aaron sees a message, so unread is real across every device — replacing the
+// old per-browser localStorage seen-map. Absent `read` = unread. Only outbound
+// (agent→Aaron) messages are tracked; inbound are Aaron's own.
 
-const SEEN_KEY = 'pv.channelSeen'
-const SEEN_MAX = 2000
-
-// note id → ISO timestamp of when its card was first rendered.
-export function seenMap(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(SEEN_KEY)
-    const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {}
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
+export function isRead(n: Note): boolean {
+  return n.metadata?.read === true
 }
 
-export function markSeen(ids: string[]) {
-  if (ids.length === 0) return
-  const map = seenMap()
-  const now = new Date().toISOString()
-  let changed = false
-  for (const id of ids) {
-    if (!map[id]) {
-      map[id] = now
-      changed = true
-    }
-  }
-  if (!changed) return
-  // Keep the map bounded: drop the oldest entries past the cap.
-  const entries = Object.entries(map)
-  const trimmed =
-    entries.length > SEEN_MAX
-      ? entries.sort((a, b) => b[1].localeCompare(a[1])).slice(0, SEEN_MAX)
-      : entries
-  localStorage.setItem(SEEN_KEY, JSON.stringify(Object.fromEntries(trimmed)))
+// Mark messages read in the vault. Patches ONLY outbound messages not already
+// read (bounded + idempotent — no redundant writes, no mark-read loop with the
+// live subscription's echo). Best-effort: a failed mark is non-fatal (the
+// message simply stays unread until the next view).
+export async function markRead(notes: Note[]): Promise<void> {
+  const toMark = notes.filter((n) => isOutbound(n) && !isRead(n))
+  if (toMark.length === 0) return
+  await Promise.allSettled(toMark.map((n) => patchNote(n.id, { metadata: { read: true } })))
 }

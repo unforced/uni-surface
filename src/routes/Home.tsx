@@ -19,7 +19,7 @@ import {
   fetchAgentRoster,
   listOutboundMessages,
   lastOutboundByChannel,
-  seenMap,
+  isRead,
 } from '../vault/channels'
 
 // One item in the merged stream, tagged with which organ it came from.
@@ -56,12 +56,10 @@ export function Home() {
 
   const surfaces = useAsync(() => listSurfaces(), [])
   const proposals = useAsync(() => listPendingProposals(), [])
-  // Snapshot the seen-map WITH the messages: cards mark themselves seen as they
-  // render, but stay visible for this visit (the next load drops them).
-  const messages = useAsync(
-    async () => ({ msgs: await listOutboundMessages(), seen: seenMap() }),
-    [],
-  )
+  // Messages snapshot: cards mark themselves read (in the vault) as they render,
+  // but the fetched snapshot keeps `read` as-of-fetch, so they stay visible for
+  // this visit and the next load drops the now-read ones.
+  const messages = useAsync(() => listOutboundMessages(), [])
   const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
 
   // Re-pull when a capture lands/syncs (answers drop surfaces) or a proposal is
@@ -108,7 +106,7 @@ export function Home() {
   )
 
   const unseenMsgs = useMemo(
-    () => (messages.data?.msgs ?? []).filter((m) => !messages.data?.seen[m.id]),
+    () => (messages.data ?? []).filter((m) => !isRead(m)),
     [messages.data],
   )
 
@@ -141,7 +139,7 @@ export function Home() {
 
   // ── Attention ledger: what's waiting + who reported last + who's gone quiet. ──
   const ledger = useMemo(() => {
-    const outbound = messages.data?.msgs ?? []
+    const outbound = messages.data ?? []
     const waiting =
       openSurfaces.length +
       pendingProposals.length +

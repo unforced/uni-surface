@@ -24,7 +24,7 @@ import {
   lastOutboundByChannel,
   statusDotClass,
   agentHref,
-  seenMap,
+  isRead,
   noteAgentKey,
 } from '../vault/channels'
 
@@ -192,12 +192,12 @@ export function Agents() {
   const lastBy = useMemo(() => lastOutboundByChannel(outbound.data ?? []), [outbound.data])
   const jobsBy = useMemo(() => jobsByAgent(jobs.data ?? []), [jobs.data])
 
-  // channel → outbound messages Aaron hasn't seen yet (Home/Channels mark seen).
+  // channel → count of outbound messages not yet read (vault-backed read-state,
+  // so the badge is honest across devices — set when Aaron opens the thread).
   const unreadBy = useMemo(() => {
-    const seen = seenMap()
     const counts = new Map<string, number>()
     for (const n of outbound.data ?? []) {
-      if (seen[n.id]) continue
+      if (isRead(n)) continue
       const c = noteAgentKey(n)
       if (!c) continue
       counts.set(c, (counts.get(c) ?? 0) + 1)

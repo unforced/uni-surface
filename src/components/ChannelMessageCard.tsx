@@ -8,7 +8,7 @@ import {
   senderLabel,
   senderColorClass,
   tsOf,
-  markSeen,
+  markRead,
   agentHref,
   sendChannelMessage,
   noteAgentKey,
@@ -89,7 +89,8 @@ function CardBase({ note, report }: { note: Note; report: boolean }) {
   const ts = tsOf(note)
 
   useEffect(() => {
-    markSeen([note.id])
+    void markRead([note])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id])
 
   return (

@@ -23,7 +23,7 @@ import {
   sendChannelMessage,
   selectChannel,
   isOutbound,
-  markSeen,
+  markRead,
   noteAgentKey,
   agentHref,
 } from '../vault/channels'
@@ -206,10 +206,10 @@ export function Channels() {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [ordered.length])
 
-  // Reading the thread counts as seeing its arm messages — keeps Home's feed
-  // and the Agents unread counts honest.
+  // Opening the thread marks its agent messages read in the vault — keeps the
+  // For You feed, Home, and the Agents unread badges honest across devices.
   useEffect(() => {
-    markSeen(ordered.filter(isOutbound).map((n) => n.id))
+    void markRead(ordered)
   }, [ordered])
 
   async function send() {
