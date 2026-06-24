@@ -2260,3 +2260,25 @@ button { font-family: inherit; cursor: pointer; }
 /* "← all agents" back-link in an agent conversation's header */
 .chan-allagents { color: var(--clay); text-decoration: none; }
 .chan-allagents:hover { text-decoration: underline; }
+
+/* Raw metadata panel on the note view — the data behind any surface. */
+.note-metadata { margin: 22px 0; }
+.note-metadata h3 { font-size: 13px; color: var(--ink-soft); margin: 0 0 8px; font-weight: 600; }
+.nm-list {
+  margin: 0; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden;
+  background: var(--surface-2);
+}
+.nm-row { display: flex; gap: 12px; padding: 7px 13px; border-top: 1px solid var(--line-soft); }
+.nm-row:first-child { border-top: none; }
+.nm-key {
+  flex: none; min-width: 120px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;
+  color: var(--ink-faint); margin: 0;
+}
+.nm-val {
+  flex: 1; min-width: 0; margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;
+  color: var(--ink); word-break: break-word; white-space: pre-wrap;
+}
+
+/* "open as note" ↗ on a For You card */
+.fy-open { color: var(--ink-faint); text-decoration: none; font-size: 14px; padding: 0 2px; }
+.fy-open:hover { color: var(--clay); }

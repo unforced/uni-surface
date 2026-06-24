@@ -57,6 +57,10 @@ export function Channels() {
   const [live, setLive] = useState(false)
   const [picker, setPicker] = useState(false)
   const [thinking, setThinking] = useState(false)
+  // The current agent's thread note id — so the header can open the raw
+  // #agent/thread note (the rolling summary + status + session id behind this
+  // conversation). Most-recent thread when an agent has more than one.
+  const [threadId, setThreadId] = useState<string | null>(null)
   const [turn, setTurn] = useState<TurnState>(emptyTurn())
   const [agentReady] = useState(() => hasAgentToken())
   const endRef = useRef<HTMLDivElement>(null)
@@ -126,11 +130,19 @@ export function Channels() {
   useEffect(() => {
     threadsRef.current = new Map()
     setThinking(false)
+    setThreadId(null)
     const client = getClient()
     if (!client) return
     const forAgent = (n: Note) => noteAgentKey(n) === channel
     const isWorking = (n: Note) => String(n.metadata?.status ?? '') === 'working'
-    const recompute = () => setThinking([...threadsRef.current.values()].some(isWorking))
+    const recompute = () => {
+      const arr = [...threadsRef.current.values()]
+      setThinking(arr.some(isWorking))
+      const latest = arr
+        .slice()
+        .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))[0]
+      setThreadId(latest?.id ?? null)
+    }
     const unsub = client.subscribe(
       { tag: THREAD_TAG },
       {
@@ -262,6 +274,14 @@ export function Channels() {
       <div className="page-head">
         <div className="kicker">
           <Link to="/agents" className="chan-allagents">← all agents</Link> · how we talk
+          {threadId && (
+            <>
+              {' · '}
+              <Link to={`/note/${encodeURIComponent(threadId)}`} className="chan-allagents" title="Open this thread (#agent/thread) as a raw note">
+                thread ↗
+              </Link>
+            </>
+          )}
         </div>
         <h1>
           #{channel}

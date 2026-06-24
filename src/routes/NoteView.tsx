@@ -9,9 +9,24 @@ import { Loading, ErrorBanner, EmptyState } from '../components/common'
 import { BackIcon } from '../components/icons'
 import { entityName, noteHref, captureHref, previewText, formatRelative, repliesTo, RESPONDS_TO } from '../vault/util'
 
+// Render a raw metadata value for the "see the data" panel: primitives as-is,
+// structures as compact JSON. The point is to show the truth behind the note.
+function fmtMeta(v: unknown): string {
+  if (v === null || v === undefined) return '—'
+  if (typeof v === 'string') return v === '' ? '""' : v
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return String(v)
+  }
+}
+
 // The generic note view — the humble fallback for any note that isn't an
-// entity or a capture (Now, Open Inquiry, Jobs/*, Feedback/*, anything else).
-// Renders content, tags, and its graph links. Reached via /note/<path-or-id>.
+// entity or a capture (Now, Open Inquiry, Jobs/*, agent definitions/threads/jobs,
+// anything else). Renders content, the raw metadata behind it, tags, and its
+// graph links — so any default surface can drop you into the actual data.
+// Reached via /note/<path-or-id>.
 export function NoteView() {
   const { id = '' } = useParams()
   const decoded = decodeURIComponent(id)
@@ -86,6 +101,20 @@ export function NoteView() {
           <article className="note-body">
             <Markdown content={data.content ?? ''} />
           </article>
+
+          {Object.keys(data.metadata ?? {}).length > 0 && (
+            <section className="note-metadata">
+              <h3>Metadata</h3>
+              <dl className="nm-list">
+                {Object.entries(data.metadata ?? {}).map(([k, v]) => (
+                  <div className="nm-row" key={k}>
+                    <dt className="nm-key">{k}</dt>
+                    <dd className="nm-val">{fmtMeta(v)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
 
           {replyRefs.length > 0 && (
             <section className="note-replies">

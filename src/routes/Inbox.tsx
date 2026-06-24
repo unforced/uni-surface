@@ -11,7 +11,7 @@ import { Markdown } from '../components/Markdown'
 import { SenderChip } from '../components/ChannelMessageCard'
 import { RespondMenu } from '../components/RespondMenu'
 import { Loading, ErrorBanner } from '../components/common'
-import { formatRelative } from '../vault/util'
+import { formatRelative, noteHref } from '../vault/util'
 import { dismissFeedItem, restoreFeedItem, dismissedFeedIds } from '../vault/feedDismissed'
 
 // The For You feed — the membrane of the proactive system (Uni/Design/The
@@ -95,6 +95,9 @@ function FeedCard({ item, onDismiss }: { item: FeedItem; onDismiss: (id: string)
             review in Weave →
           </Link>
         )}
+        <Link className="fy-open" to={noteHref(note)} title="Open as a raw note (see the data behind it)">
+          ↗
+        </Link>
         <span className="fy-spacer" />
         <button className="fy-dismiss" onClick={() => onDismiss(note.id)} title="Drop this from the feed">
           Dismiss

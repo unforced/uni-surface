@@ -269,6 +269,15 @@ export function Agents() {
                       {a.status === 'enabled' ? 'disable' : 'enable'}
                     </button>
                   )}
+                  {a.defId && (
+                    <Link
+                      className="arm-tag arm-tag-btn"
+                      to={`/note/${encodeURIComponent(a.defId)}`}
+                      title="Open this agent definition as a raw note (prompt + config + metadata)"
+                    >
+                      note ↗
+                    </Link>
+                  )}
                 </div>
                 {promptOpen && (
                   <div className="arm-prompt">
@@ -386,6 +395,13 @@ export function Agents() {
                               >
                                 edit
                               </button>
+                              <Link
+                                className="arm-sched-btn ghost"
+                                to={`/note/${encodeURIComponent(j.id)}`}
+                                title="Open this schedule (#agent/job) as a raw note"
+                              >
+                                note ↗
+                              </Link>
                             </>
                           )}
                         </div>
