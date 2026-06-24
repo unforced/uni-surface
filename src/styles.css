@@ -2282,3 +2282,25 @@ button { font-family: inherit; cursor: pointer; }
 /* "open as note" ↗ on a For You card */
 .fy-open { color: var(--ink-faint); text-decoration: none; font-size: 14px; padding: 0 2px; }
 .fy-open:hover { color: var(--clay); }
+
+/* Type-aware panel on the note view (schedule / agent / thread / message). */
+.note-typed {
+  margin: 16px 0; padding: 13px 16px; border-radius: var(--r-md);
+  background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--clay-soft);
+}
+.nt-def { border-left-color: var(--sage); }
+.nt-job { border-left-color: var(--gold); }
+.nt-thread { border-left-color: var(--plum); }
+.nt-msg { border-left-color: var(--clay-soft); }
+.nt-title { font-family: var(--serif); font-size: 16px; color: var(--ink); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nt-title a { color: var(--clay); text-decoration: none; }
+.nt-title a:hover { text-decoration: underline; }
+.nt-badge {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+  color: var(--ink-soft); background: var(--cream-2); border-radius: var(--r-pill); padding: 1px 8px;
+}
+.nt-rows { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 9px; font-size: 13.5px; color: var(--ink); }
+.nt-k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); margin-right: 6px; }
+.nt-actions { margin-top: 10px; font-size: 13px; }
+.nt-actions a { color: var(--clay); text-decoration: none; }
+.nt-actions a:hover { text-decoration: underline; }

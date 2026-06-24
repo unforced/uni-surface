@@ -1,13 +1,14 @@
 import { useMemo } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { getNote, fetchCapturesByIds } from '../vault/api'
-import type { VaultLink } from '../vault/types'
+import type { Note, VaultLink } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { NoteControls } from '../components/NoteControls'
 import { Loading, ErrorBanner, EmptyState } from '../components/common'
 import { BackIcon } from '../components/icons'
 import { entityName, noteHref, captureHref, previewText, formatRelative, repliesTo, RESPONDS_TO } from '../vault/util'
+import { agentJobOf, agentOf, describeCron, agentHref, noteAgentKey } from '../vault/channels'
 
 // Render a raw metadata value for the "see the data" panel: primitives as-is,
 // structures as compact JSON. The point is to show the truth behind the note.
@@ -22,11 +23,96 @@ function fmtMeta(v: unknown): string {
   }
 }
 
+// A friendly, type-aware summary for the system notes Aaron most wants to read
+// behind the surface — a schedule, an agent definition, a thread, a message.
+// Renders above the raw metadata (which still shows the full truth), so the
+// note view is both legible AND complete. Returns null for ordinary notes.
+function TypedNotePanel({ note }: { note: Note }) {
+  const tags = note.tags ?? []
+  const has = (t: string) => tags.includes(t)
+
+  if (has('#agent/job')) {
+    const j = agentJobOf(note)
+    return (
+      <section className="note-typed nt-job">
+        <div className="nt-title">
+          ⏱ Schedule {j.agent && <>for <Link to={agentHref(j.agent)}>#{j.agent}</Link></>}
+        </div>
+        <div className="nt-rows">
+          {j.cron && <div><span className="nt-k">when</span> {describeCron(j.cron)}{j.tz ? ` · ${j.tz}` : ''}</div>}
+          <div><span className="nt-k">state</span> {j.enabled ? 'enabled' : 'paused'}</div>
+          {j.lastStatus && (
+            <div><span className="nt-k">last</span> {j.lastStatus}{j.lastRunAt ? ` · ${formatRelative(j.lastRunAt)}` : ''}</div>
+          )}
+        </div>
+        {j.agent && <div className="nt-actions"><Link to={agentHref(j.agent)}>open conversation →</Link></div>}
+      </section>
+    )
+  }
+
+  if (has('#agent/definition')) {
+    const a = agentOf(note)
+    return (
+      <section className="note-typed nt-def">
+        <div className="nt-title">🐙 Agent <strong>{a.name}</strong>{a.status && <span className="nt-badge">{a.status}</span>}</div>
+        <div className="nt-rows">
+          {a.backend && <div><span className="nt-k">backend</span> {a.backend}</div>}
+          {a.mode && <div><span className="nt-k">mode</span> {a.mode}</div>}
+          {a.model && <div><span className="nt-k">model</span> {a.model}</div>}
+        </div>
+        <div className="nt-actions">
+          <Link to={agentHref(a.name)}>open conversation →</Link> · <Link to="/agents">all agents →</Link>
+        </div>
+      </section>
+    )
+  }
+
+  if (has('#agent/thread')) {
+    const agent = noteAgentKey(note)
+    const status = String(note.metadata?.status ?? '')
+    const mode = String(note.metadata?.mode ?? '')
+    return (
+      <section className="note-typed nt-thread">
+        <div className="nt-title">🧵 Thread {agent && <>for <Link to={agentHref(agent)}>#{agent}</Link></>}</div>
+        <div className="nt-rows">
+          {status && <div><span className="nt-k">status</span> {status}</div>}
+          {mode && <div><span className="nt-k">mode</span> {mode}</div>}
+        </div>
+        {agent && <div className="nt-actions"><Link to={agentHref(agent)}>open conversation →</Link></div>}
+      </section>
+    )
+  }
+
+  if (has('#agent/message')) {
+    const agent = noteAgentKey(note)
+    const sender = String(note.metadata?.sender ?? '')
+    const direction = String(note.metadata?.direction ?? '')
+    const kind = String(note.metadata?.kind ?? '')
+    const asks = note.metadata?.asks
+    return (
+      <section className="note-typed nt-msg">
+        <div className="nt-title">
+          ✉️ Message{kind && kind !== 'message' && <span className="nt-badge">{kind}</span>}
+          {asks !== undefined && asks !== null && <span className="nt-badge">{Number(asks)} ask{Number(asks) === 1 ? '' : 's'}</span>}
+        </div>
+        <div className="nt-rows">
+          {sender && <div><span className="nt-k">from</span> {sender}</div>}
+          {direction && <div><span className="nt-k">direction</span> {direction}</div>}
+          {agent && <div><span className="nt-k">channel</span> #{agent}</div>}
+        </div>
+        {agent && <div className="nt-actions"><Link to={agentHref(agent)}>open conversation →</Link></div>}
+      </section>
+    )
+  }
+
+  return null
+}
+
 // The generic note view — the humble fallback for any note that isn't an
 // entity or a capture (Now, Open Inquiry, Jobs/*, agent definitions/threads/jobs,
-// anything else). Renders content, the raw metadata behind it, tags, and its
-// graph links — so any default surface can drop you into the actual data.
-// Reached via /note/<path-or-id>.
+// anything else). Renders a type-aware summary (for system notes), the content,
+// the raw metadata behind it, tags, and its graph links — so any default surface
+// can drop you into the actual data. Reached via /note/<path-or-id>.
 export function NoteView() {
   const { id = '' } = useParams()
   const decoded = decodeURIComponent(id)
@@ -97,6 +183,8 @@ export function NoteView() {
               )}
             </div>
           </header>
+
+          <TypedNotePanel note={data} />
 
           <article className="note-body">
             <Markdown content={data.content ?? ''} />
