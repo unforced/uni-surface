@@ -26,6 +26,7 @@ import {
   markRead,
   noteAgentKey,
   agentHref,
+  stashAgentReturn,
 } from '../vault/channels'
 
 // The channels organ — talking to the agent through the vault, live.
@@ -246,6 +247,9 @@ export function Channels() {
     const cfg = getConfig()
     if (!cfg) return
     try {
+      // Remember which conversation we're in, so the shared OAuth callback
+      // returns here (where the turn-stream lives) instead of dumping us on Home.
+      stashAgentReturn(channel)
       const { authorizeUrl } = await beginAgentOAuth(cfg.origin)
       window.location.assign(authorizeUrl)
     } catch {
@@ -256,7 +260,9 @@ export function Channels() {
   return (
     <div className="page" style={{ maxWidth: 740 }}>
       <div className="page-head">
-        <div className="kicker">channels · how we talk</div>
+        <div className="kicker">
+          <Link to="/agents" className="chan-allagents">← all agents</Link> · how we talk
+        </div>
         <h1>
           #{channel}
           <span className="chan-switch">

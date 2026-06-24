@@ -385,6 +385,28 @@ export function selectChannel(channel: string) {
 // by name; the thread note back-links its definition via metadata.definition).
 export const agentHref = (name: string) => `/agent/${encodeURIComponent(name)}`
 
+// The agent:read OAuth flow redirects out to the hub and back through the shared
+// /oauth/callback — which would otherwise dump you on Home. Stash which agent's
+// conversation you were on before the redirect, so the callback returns you
+// there (where the turn-event stream actually lives).
+const AGENT_RETURN_KEY = 'pv.agentReturn'
+export function stashAgentReturn(channel: string): void {
+  try {
+    sessionStorage.setItem(AGENT_RETURN_KEY, channel)
+  } catch {
+    /* best-effort */
+  }
+}
+export function takeAgentReturn(): string | null {
+  try {
+    const v = sessionStorage.getItem(AGENT_RETURN_KEY)
+    if (v) sessionStorage.removeItem(AGENT_RETURN_KEY)
+    return v && v.trim() ? v : null
+  } catch {
+    return null
+  }
+}
+
 // ---- Read-state (vault-backed — cross-device) ----
 //
 // "Read" lives on the message note itself (`metadata.read: true`), set when

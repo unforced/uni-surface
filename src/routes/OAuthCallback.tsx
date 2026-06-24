@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PendingApprovalError } from '@openparachute/surface-client'
 import { handleVaultCallback } from '../vault/surface'
 import { completeAgentOAuth, loadAgentPendingOAuth, persistAgentToken } from '../vault/agentAuth'
+import { takeAgentReturn, agentHref } from '../vault/channels'
 import { Seed } from '../components/icons'
 
 // Landing route for the OAuth redirect: /oauth/callback?code=…&state=…
@@ -45,7 +46,10 @@ export function OAuthCallback() {
       completeAgentOAuth(code, state)
         .then(({ pending, token }) => {
           persistAgentToken(pending, token)
-          nav('/', { replace: true })
+          // Return to the conversation the user enabled "watch it work" from
+          // (where the turn-stream renders), not Home.
+          const back = takeAgentReturn()
+          nav(back ? agentHref(back) : '/', { replace: true })
         })
         .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       return
