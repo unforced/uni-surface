@@ -13,6 +13,7 @@ import { entityHref } from '../vault/util'
 import type { ProposalSpec } from '../vault/proposalSpec'
 import { applyDossierDeltas, hasUpdateDeltas } from '../vault/proposalSpec'
 import { Markdown } from './Markdown'
+import { OpenNote } from './common'
 
 // ── Render + accept an `update_entity` proposal ──
 // A refresh of an existing entity's summary + content. We show the proposed new
@@ -379,6 +380,7 @@ export function UpdateEntityCard({
         <button className="text-toggle pc-skip" onClick={skip} disabled={busy}>
           Skip
         </button>
+        <OpenNote note={proposal} className="pc-open" />
         <div className="spacer" />
         {/* When stale, the primary path is Re-apply on latest (above); the plain
             Accept stays disabled so the human can't clobber by reflex. */}

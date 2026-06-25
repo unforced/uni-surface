@@ -38,6 +38,7 @@ import {
 } from '../vault/proposalSpec'
 import { CaptureView } from './CaptureView'
 import { UpdateEntityCard } from './UpdateEntityCard'
+import { OpenNote } from './common'
 import { LinkIcon, PlusIcon } from './icons'
 
 const RELATIONSHIPS = ['relates-to', 'mentions', 'develops', 'at', 'part-of', 'practices', 'uses', 'references']
@@ -955,6 +956,7 @@ function CreateEntityCard({
         >
           Skip
         </button>
+        <OpenNote note={proposal} className="pc-open" />
         <button
           className="btn-ghost btn"
           onClick={() => setEditing((v) => !v)}

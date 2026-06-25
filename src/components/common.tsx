@@ -1,7 +1,24 @@
 import { Link } from 'react-router-dom'
 import type { NoteRef, Note } from '../vault/types'
 import { entityTypeOf, RELATIONSHIP_LABELS } from '../vault/types'
-import { entityName, entityHref } from '../vault/util'
+import { entityName, entityHref, noteHref } from '../vault/util'
+
+// A small "open as a raw note" ↗ affordance — the dig-in transparency primitive.
+// Drops to /note/<id> (the type-aware + raw-metadata view). stopPropagation so it
+// works inside clickable cards. Used wherever a note renders as a default surface,
+// so you can always see the data behind it.
+export function OpenNote({ note, className = '' }: { note: NoteRef | Note; className?: string }) {
+  return (
+    <Link
+      to={noteHref(note)}
+      className={`open-note ${className}`}
+      title="Open as a raw note — see the data behind it"
+      onClick={(e) => e.stopPropagation()}
+    >
+      ↗
+    </Link>
+  )
+}
 
 // ── Entity chip — navigable, color-dotted by type ──
 export function EntityChip({

@@ -3,6 +3,7 @@ import type { Note } from '../vault/types'
 import { resolveSurface, reopenSurface } from '../vault/api'
 import { openCapture } from '../App'
 import { Markdown } from './Markdown'
+import { OpenNote } from './common'
 
 // The bold lead of a surface ("**The work.** …") → a short label for the reply
 // chip. Falls back to the path leaf.
@@ -69,6 +70,8 @@ export function SurfaceCard({ surface, onChanged }: { surface: Note; onChanged: 
             </button>
           </>
         )}
+        <span style={{ flex: 1 }} />
+        <OpenNote note={surface} className="mq-open" />
       </div>
     </div>
   )

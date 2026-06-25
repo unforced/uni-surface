@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Note } from '../vault/types'
 import { Markdown } from './Markdown'
+import { OpenNote } from './common'
 import { formatRelative } from '../vault/util'
 import {
   senderOf,
@@ -109,6 +110,8 @@ function CardBase({ note, report }: { note: Note; report: boolean }) {
           </Link>
         )}
         {ts && <span className="cm-when">{formatRelative(ts)}</span>}
+        <span style={{ flex: 1 }} />
+        <OpenNote note={note} className="cm-open" />
       </div>
       <div className="cm-body">
         <Markdown content={note.content ?? ''} />

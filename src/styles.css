@@ -2304,3 +2304,7 @@ button { font-family: inherit; cursor: pointer; }
 .nt-actions { margin-top: 10px; font-size: 13px; }
 .nt-actions a { color: var(--clay); text-decoration: none; }
 .nt-actions a:hover { text-decoration: underline; }
+
+/* Shared "open as a raw note" ↗ link, used across cards. */
+.open-note { color: var(--ink-faint); text-decoration: none; font-size: 13px; flex: none; padding: 0 2px; }
+.open-note:hover { color: var(--clay); }

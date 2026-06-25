@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Note } from '../vault/types'
 import { captureKindOf } from '../vault/types'
 import { captureGlyph } from './icons'
-import { EntityChip } from './common'
+import { EntityChip, OpenNote } from './common'
 import { captureHref, formatTime, linkedEntities, previewText } from '../vault/util'
 
 // One capture in the timeline spine.
@@ -29,6 +29,8 @@ export function CaptureCard({ note }: { note: Note }) {
         {pending && (
           <span className="sync-chip">{navigator.onLine ? 'saving…' : 'offline — queued'}</span>
         )}
+        <span style={{ flex: 1 }} />
+        {!pending && <OpenNote note={note} className="capture-open" />}
       </div>
       <div className="capture-body">
         <span className="capture-preview">{preview || '(no text)'}</span>
