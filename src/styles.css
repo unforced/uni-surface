@@ -2331,3 +2331,18 @@ button { font-family: inherit; cursor: pointer; }
   font-family: var(--serif); font-size: 20px; line-height: 1.75; color: var(--ink);
 }
 .write-canvas::placeholder { color: var(--ink-faint); font-style: italic; }
+
+/* Chat composer: file attach. */
+.chat-attach {
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  font-size: 17px; padding: 0 8px; align-self: stretch; opacity: 0.7; flex: none;
+}
+.chat-attach:hover { opacity: 1; }
+.chat-file {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 5px 10px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-pill);
+  font-size: 12.5px; color: var(--ink-soft); width: fit-content; max-width: 100%;
+}
+.chat-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-file-x { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 15px; line-height: 1; padding: 0 2px; }
+.chat-file-x:hover { color: var(--clay); }

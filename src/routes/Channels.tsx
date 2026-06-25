@@ -5,6 +5,7 @@ import { getClient } from '../vault/surface'
 import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { SenderChip } from '../components/ChannelMessageCard'
+import { uploadStorageFile, addAttachment } from '../vault/api'
 import { noteHref } from '../vault/util'
 import { TurnStream } from '../components/TurnStream'
 import { subscribeTurnEvents, foldTurn, emptyTurn, type TurnState } from '../vault/turnEvents'
@@ -54,6 +55,10 @@ export function Channels() {
   const [msgs, setMsgs] = useState<Map<string, Note>>(new Map())
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  // An optional file to attach to the next message (uploaded to vault storage +
+  // attached to the message note). NOTE: the agent's turn receiving the file is
+  // a daemon capability (see the CC ask) — the surface gets it into the vault.
+  const [file, setFile] = useState<File | null>(null)
   const [live, setLive] = useState(false)
   const [picker, setPicker] = useState(false)
   const [thinking, setThinking] = useState(false)
@@ -227,11 +232,27 @@ export function Channels() {
 
   async function send() {
     const body = text.trim()
-    if (!body || sending) return
+    if ((!body && !file) || sending) return
     setSending(true)
     try {
-      await sendChannelMessage(channel, body)
+      if (file) {
+        // Upload to vault storage, send the message, then attach the file to the
+        // message note. The body names the file + its storage path so an agent
+        // (which has vault access) can locate it even before the daemon passes
+        // attachments into the turn directly.
+        const uploaded = await uploadStorageFile(file)
+        const ref = `📎 Attached **${file.name}** \`${uploaded.path}\``
+        const msgBody = body ? `${body}\n\n${ref}` : ref
+        const note = await sendChannelMessage(channel, msgBody)
+        await addAttachment(note.id, {
+          path: uploaded.path,
+          mimeType: file.type || 'application/octet-stream',
+        })
+      } else {
+        await sendChannelMessage(channel, body)
+      }
       setText('')
+      setFile(null)
     } finally {
       setSending(false)
     }
@@ -377,7 +398,21 @@ export function Channels() {
         <div ref={endRef} />
       </div>
 
+      {file && (
+        <div className="chat-file" title={file.name}>
+          <span className="chat-file-name">📎 {file.name}</span>
+          <button className="chat-file-x" onClick={() => setFile(null)} aria-label="Remove file">×</button>
+        </div>
+      )}
       <div className="chat-input">
+        <label className="chat-attach" title="Attach a file">
+          📎
+          <input
+            type="file"
+            style={{ display: 'none' }}
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -390,7 +425,7 @@ export function Channels() {
             }
           }}
         />
-        <button className="btn" onClick={send} disabled={!text.trim() || sending}>
+        <button className="btn" onClick={send} disabled={(!text.trim() && !file) || sending}>
           {sending ? '…' : 'Send'}
         </button>
       </div>
