@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@openparachute/surface-client": "0.3.1",
+    "@openparachute/surface-client": "0.3.3-rc.1",
     "idb": "^8.0.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
