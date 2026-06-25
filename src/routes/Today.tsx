@@ -131,13 +131,22 @@ export function Today() {
         <div>
           <FocusPanel />
           <MorningCard />
-          <button className="new-capture-card" onClick={() => openCapture()}>
-            <span className="ncc-glyph"><PlusIcon /></span>
-            <span className="ncc-text">
-              <span className="ncc-title">New capture</span>
-              <span className="ncc-sub">Drop a thought or record a voice memo</span>
-            </span>
-          </button>
+          <div className="capture-row">
+            <button className="new-capture-card" onClick={() => openCapture()}>
+              <span className="ncc-glyph"><PlusIcon /></span>
+              <span className="ncc-text">
+                <span className="ncc-title">New capture</span>
+                <span className="ncc-sub">Drop a thought or record a voice memo</span>
+              </span>
+            </button>
+            <Link className="new-capture-card write-card" to="/write">
+              <span className="ncc-glyph">✍️</span>
+              <span className="ncc-text">
+                <span className="ncc-title">Morning pages</span>
+                <span className="ncc-sub">A quiet, full-page space to write</span>
+              </span>
+            </Link>
+          </div>
 
           {captures.loading && merged.length === 0 && <Loading label="Reading your recent captures…" />}
           {Boolean(captures.error) && merged.length === 0 && (

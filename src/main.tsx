@@ -16,6 +16,7 @@ import { Schema } from './routes/Schema'
 import { Arc } from './routes/Arc'
 import { Time } from './routes/Time'
 import { Channels } from './routes/Channels'
+import { Write } from './routes/Write'
 import { Weave } from './routes/Weave'
 import { Proposals } from './routes/Proposals'
 import { Browse } from './routes/Browse'
@@ -45,6 +46,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <Home /> },
         { path: 'today', element: <Today /> },
+        { path: 'write', element: <Write /> },
         { path: 'agents', element: <Agents /> },
         { path: 'arms', element: <Navigate to="/agents" replace /> },
         { path: 'inbox', element: <Inbox /> },

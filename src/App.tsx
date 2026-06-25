@@ -187,6 +187,7 @@ function Shell() {
               <>
                 <div className="overflow-scrim" onClick={() => setMenuOpen(false)} />
                 <div className="overflow-pop">
+                  <NavLink to="/write" className="overflow-item" onClick={() => setMenuOpen(false)}>Morning pages · write</NavLink>
                   <NavLink to="/dev" className="overflow-item" onClick={() => setMenuOpen(false)}>Dev</NavLink>
                   <NavLink to="/writing" className="overflow-item" onClick={() => setMenuOpen(false)}>Writing</NavLink>
                   <NavLink to="/arc" className="overflow-item" onClick={() => setMenuOpen(false)}>Life · the Arc</NavLink>
