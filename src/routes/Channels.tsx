@@ -31,7 +31,7 @@ import {
 } from '../vault/channels'
 
 // The channels organ — talking to the agent through the vault, live.
-// A message is an #agent/message note; sending writes an inbound note, the
+// A message is an agent/message note; sending writes an inbound note, the
 // agent replies with an outbound one, and both arrive in realtime over the SSE
 // subscription (no polling). Aaron's messages right, the agent's left — each
 // with its own sender chip; reports and dispatches render as cards.
@@ -63,7 +63,7 @@ export function Channels() {
   const [picker, setPicker] = useState(false)
   const [thinking, setThinking] = useState(false)
   // The current agent's thread note id — so the header can open the raw
-  // #agent/thread note (the rolling summary + status + session id behind this
+  // agent/thread note (the rolling summary + status + session id behind this
   // conversation). Most-recent thread when an agent has more than one.
   const [threadId, setThreadId] = useState<string | null>(null)
   const [turn, setTurn] = useState<TurnState>(emptyTurn())
@@ -127,7 +127,7 @@ export function Channels() {
     return unsub
   }, [channel])
 
-  // Live "thinking…" pill: the agent's #agent/thread note carries
+  // Live "thinking…" pill: the agent's agent/thread note carries
   // metadata.status ('working' during a turn, 'ok'/'error' after) — written by
   // the daemon today. We read that existing state over the same live-query (no
   // new writes, no new auth) and light the pill while any of this agent's
@@ -298,7 +298,7 @@ export function Channels() {
           {threadId && (
             <>
               {' · '}
-              <Link to={`/note/${encodeURIComponent(threadId)}`} className="chan-allagents" title="Open this thread (#agent/thread) as a raw note">
+              <Link to={`/note/${encodeURIComponent(threadId)}`} className="chan-allagents" title="Open this thread (agent/thread) as a raw note">
                 thread ↗
               </Link>
             </>
