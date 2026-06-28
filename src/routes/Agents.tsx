@@ -29,7 +29,7 @@ import {
 } from '../vault/channels'
 
 // The window into Uni itself — the system's self-state (Uni/Now), the agent
-// roster (every #agent/definition with its config, channel, pulse and unread
+// roster (every agent/definition with its config, channel, pulse and unread
 // count), and the recent session log. This is mission control: the one place
 // that shows the whole octopus at a glance. Read-only — agents are created and
 // edited in the agent app; this is the window, not the lever.
@@ -37,7 +37,7 @@ export function Agents() {
   const roster = useAsync(() => fetchAgentRoster(), [])
   // ONE query for all outbound messages; per-agent stats are grouped client-side.
   const outbound = useAsync(() => listOutboundMessages(), [])
-  // Scheduled jobs (#agent/job), grouped by their target agent. Soft-fail: a
+  // Scheduled jobs (agent/job), grouped by their target agent. Soft-fail: a
   // missing Schedules layer shouldn't blank the roster.
   const jobs = useAsync(() => fetchAgentJobs().catch(() => [] as AgentJob[]), [])
   // The system's working picture of itself + the recent log — cheap queries
@@ -236,7 +236,7 @@ export function Agents() {
       {Boolean(roster.error) && <ErrorBanner error={roster.error} onRetry={roster.reload} />}
       {roster.data && roster.data.length === 0 && (
         <EmptyState art="🐙" title="No agents yet">
-          When <code>#agent/definition</code> notes land under <code>Agents/</code>, they'll gather here.
+          When <code>agent/definition</code> notes land under <code>Agents/</code>, they'll gather here.
         </EmptyState>
       )}
 
@@ -398,7 +398,7 @@ export function Agents() {
                               <Link
                                 className="arm-sched-btn ghost"
                                 to={`/note/${encodeURIComponent(j.id)}`}
-                                title="Open this schedule (#agent/job) as a raw note"
+                                title="Open this schedule (agent/job) as a raw note"
                               >
                                 note ↗
                               </Link>

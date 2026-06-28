@@ -69,7 +69,7 @@ export function Home() {
   }, [])
 
   // ── The live pulse: which agents are mid-turn right now. ──
-  // Reads the existing #agent/thread status over the shared live subscription
+  // Reads the existing agent/thread status over the shared live subscription
   // (no new writes, no new auth) — the "watch it work" transparency that makes
   // a continuously-working system feel calm rather than loud.
   const [working, setWorking] = useState<string[]>([])

@@ -2,27 +2,29 @@
 // Home (the unseen-message feed), and Agents (the roster). One source of truth
 // for sender attribution, the agent roster shape, and the local seen-state.
 //
-// Tag note: agent tags are stored WITH a literal `#` (`#agent/message`,
-// `#agent/definition`) — a filter built as `agent/message` returns nothing.
-// All the constants below carry the `#`; never hand-build these strings.
+// Tag note: agent tags are stored BARE in the vault (`agent/message`,
+// `agent/definition`) — the `#`-prefixed form was an accident now fixed
+// ecosystem-wide (the vault stores tags bare; data already migrated). A filter
+// built with a leading `#` returns nothing. All the constants below are bare;
+// never hand-build these strings.
 
 import { createNote, listNotes, patchNote } from './api'
 import type { Note, NoteRef } from './types'
 import { SOURCED_FROM } from './util'
 
-// The conversation stream. Querying the parent `#agent/message` returns its
-// /inbound + /outbound descendants by tag inheritance. `#channel-message` is the
+// The conversation stream. Querying the parent `agent/message` returns its
+// /inbound + /outbound descendants by tag inheritance. `channel-message` is the
 // pre-rename tag — kept read-only so historical threads still render.
-export const MSG_TAG = '#agent/message'
-export const LEGACY_MSG_TAG = '#channel-message'
+export const MSG_TAG = 'agent/message'
+export const LEGACY_MSG_TAG = 'channel-message'
 export const CHANNEL_KEY = 'pv.channel'
-// The agent roster: each agent is an `#agent/definition` note at Agents/<name>,
+// The agent roster: each agent is an `agent/definition` note at Agents/<name>,
 // its body the system prompt and its metadata the config.
-export const AGENT_DEF_TAG = '#agent/definition'
+export const AGENT_DEF_TAG = 'agent/definition'
 // A thread record (definition → thread → messages). Carries metadata.status:
 // 'working' while a turn runs, 'ok'/'error' when it settles — written by the
 // daemon. We subscribe to it to show a live "thinking…" pill.
-export const THREAD_TAG = '#agent/thread'
+export const THREAD_TAG = 'agent/thread'
 
 export const tsOf = (n: Note) => String(n.metadata?.ts ?? n.createdAt ?? '')
 
@@ -79,7 +81,7 @@ export function sparkOf(n: Note): NoteRef | null {
 
 // ---- Agent roster ----
 
-// One agent from the roster: its `#agent/definition` note at Agents/<name>. The
+// One agent from the roster: its `agent/definition` note at Agents/<name>. The
 // body is the system prompt; the metadata is the runtime config. An agent's
 // channel IS its name (messages stamp metadata.channel = the agent name).
 export interface Agent {
@@ -117,7 +119,7 @@ export function statusDotClass(status: string): string {
   return 'status-dormant' // disabled | dormant | unknown
 }
 
-// The full agent roster, sorted by name. Reads `#agent/definition` notes —
+// The full agent roster, sorted by name. Reads `agent/definition` notes —
 // body (system prompt) included so the roster can expand each agent inline.
 // Callers decide how to handle failure (Channels falls back to a bare 'uni').
 export async function fetchAgentRoster(): Promise<Agent[]> {
@@ -132,7 +134,7 @@ export async function fetchAgentRoster(): Promise<Agent[]> {
   return agents
 }
 
-// Edit an agent's system prompt — the body of its `#agent/definition` note.
+// Edit an agent's system prompt — the body of its `agent/definition` note.
 // High blast radius: it changes how the agent behaves on its next run, so
 // callers should confirm first.
 export function updateAgentPrompt(defId: string, prompt: string): Promise<Note> {
@@ -144,12 +146,12 @@ export function setAgentStatus(defId: string, status: 'enabled' | 'disabled'): P
   return patchNote(defId, { metadata: { status } })
 }
 
-// ---- Schedules (#agent/job) ----
+// ---- Schedules (agent/job) ----
 
 // A scheduled job: the runner injects this note's content as an inbound message
 // to `agent` on its cron. Body = the message; metadata = the schedule + health.
-// Full contract: Uni/Reference/Agent Jobs (#agent-job scheduling).
-export const JOB_TAG = '#agent/job'
+// Full contract: Uni/Reference/Agent Jobs (agent-job scheduling).
+export const JOB_TAG = 'agent/job'
 
 export interface AgentJob {
   jobId: string
@@ -294,7 +296,7 @@ export function isValidTz(tz: string): boolean {
 // A job id slug — the runner's rule (alphanumeric, dash, underscore).
 export const isValidJobId = (s: string) => /^[a-zA-Z0-9_-]+$/.test(s.trim())
 
-// Create a scheduled job for an agent: writes an #agent/job note at the
+// Create a scheduled job for an agent: writes an agent/job note at the
 // convention path. The runner picks it up on its next tick. Caller validates
 // (slug, cron, tz) first — a direct write bypasses the daemon's validateJob.
 export async function createAgentJob(params: {
@@ -326,8 +328,8 @@ export async function createAgentJob(params: {
 // All recent agent→Aaron messages across every channel, newest first — for
 // Home's feed and the Agents roster (never one query per agent). Queries the
 // parent tag and filters client-side so notes without the /outbound subtag
-// still count. Reads the new `#agent/message` tag and the legacy
-// `#channel-message` tag, merging both so historical threads still appear.
+// still count. Reads the new `agent/message` tag and the legacy
+// `channel-message` tag, merging both so historical threads still appear.
 export async function listOutboundMessages(limit = 300): Promise<Note[]> {
   const opts = { includeMetadata: true, includeContent: true, sort: 'desc' as const, limit }
   const [fresh, legacy] = await Promise.all([
@@ -355,7 +357,7 @@ export function lastOutboundByChannel(notes: Note[]): Map<string, string> {
 }
 
 // Write Aaron's message into a channel (the inbound half of the conversation).
-// New-model path + tags: `channel/<agent>/<uuid>`, `#agent/message[/inbound]`.
+// New-model path + tags: `channel/<agent>/<uuid>`, `agent/message[/inbound]`.
 //
 // Routing key migration (expand→contract): the note routing key is moving
 // `channel` → `agent`. We dual-carry both keys — `agent` is the destination,

@@ -8,7 +8,7 @@ import { NoteControls } from '../components/NoteControls'
 import { Loading, ErrorBanner, EmptyState } from '../components/common'
 import { BackIcon } from '../components/icons'
 import { entityName, noteHref, captureHref, previewText, formatRelative, repliesTo, RESPONDS_TO } from '../vault/util'
-import { agentJobOf, agentOf, describeCron, agentHref, noteAgentKey } from '../vault/channels'
+import { agentJobOf, agentOf, describeCron, agentHref, noteAgentKey, JOB_TAG, AGENT_DEF_TAG, THREAD_TAG, MSG_TAG } from '../vault/channels'
 
 // Render a raw metadata value for the "see the data" panel: primitives as-is,
 // structures as compact JSON. The point is to show the truth behind the note.
@@ -31,7 +31,7 @@ function TypedNotePanel({ note }: { note: Note }) {
   const tags = note.tags ?? []
   const has = (t: string) => tags.includes(t)
 
-  if (has('#agent/job')) {
+  if (has(JOB_TAG)) {
     const j = agentJobOf(note)
     return (
       <section className="note-typed nt-job">
@@ -50,7 +50,7 @@ function TypedNotePanel({ note }: { note: Note }) {
     )
   }
 
-  if (has('#agent/definition')) {
+  if (has(AGENT_DEF_TAG)) {
     const a = agentOf(note)
     return (
       <section className="note-typed nt-def">
@@ -67,7 +67,7 @@ function TypedNotePanel({ note }: { note: Note }) {
     )
   }
 
-  if (has('#agent/thread')) {
+  if (has(THREAD_TAG)) {
     const agent = noteAgentKey(note)
     const status = String(note.metadata?.status ?? '')
     const mode = String(note.metadata?.mode ?? '')
@@ -83,7 +83,7 @@ function TypedNotePanel({ note }: { note: Note }) {
     )
   }
 
-  if (has('#agent/message')) {
+  if (has(MSG_TAG)) {
     const agent = noteAgentKey(note)
     const sender = String(note.metadata?.sender ?? '')
     const direction = String(note.metadata?.direction ?? '')
