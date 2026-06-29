@@ -9,7 +9,7 @@ import {
 } from '../vault/api'
 import type { Note } from '../vault/types'
 import { isCapture } from '../vault/types'
-import { entityName } from '../vault/util'
+import { entityLeaf } from '../vault/util'
 import { CloseIcon } from './icons'
 
 // Rename an entity AND propagate the correction. The display name is the path
@@ -51,7 +51,10 @@ export function RenameEntity({
   onClose: () => void
   onRenamed: (newPath: string) => void
 }) {
-  const oldName = entityName(entity)
+  // The literal note name (path leaf) — this drives the path rewrite, the
+  // search/replace of self- and cross-references, and the kept-alias. Must be
+  // the raw leaf, not the display name (which may resolve to the parent folder).
+  const oldName = entityLeaf(entity)
   const slash = entity.path.lastIndexOf('/')
   const folder = slash >= 0 ? entity.path.slice(0, slash) : ''
 

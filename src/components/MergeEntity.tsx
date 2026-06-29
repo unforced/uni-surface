@@ -3,7 +3,7 @@ import { addAlias, deleteNote, getNote, linkCapture, patchNote, searchAllNotes }
 import type { Note } from '../vault/types'
 import { entityTypeOf } from '../vault/types'
 import { useEntityIndex } from '../vault/EntityIndex'
-import { entityName, entityAliases } from '../vault/util'
+import { entityName, entityLeaf, entityAliases } from '../vault/util'
 import { CloseIcon } from './icons'
 
 // Merge this entity (the source, B) INTO another (the survivor, A) — for two
@@ -53,9 +53,10 @@ export function MergeEntity({
     const A = target
     const B = entity
     try {
-      // 1. Aliases: B's name + aliases become A's aliases.
+      // 1. Aliases: B's name + aliases become A's aliases. Use the literal leaf
+      // (not the display name, which may resolve to the parent folder).
       setProgress('Folding aliases…')
-      for (const a of [entityName(B), ...entityAliases(B)]) await addAlias(A.id, a)
+      for (const a of [entityLeaf(B), ...entityAliases(B)]) await addAlias(A.id, a)
 
       // 2. Re-point B's links to A (wikilink edges follow the reference rewrite).
       setProgress('Re-pointing links…')
@@ -72,7 +73,7 @@ export function MergeEntity({
 
       // 3. Rewrite [[B.path]] references → [[A.path]] in any note that holds them.
       setProgress('Rewriting references…')
-      const refs = await searchAllNotes(entityName(B)).catch(() => [] as Note[])
+      const refs = await searchAllNotes(entityLeaf(B)).catch(() => [] as Note[])
       for (const n of refs) {
         if (n.id === B.id || n.id === A.id) continue
         const c = n.content ?? ''
@@ -86,7 +87,7 @@ export function MergeEntity({
         setProgress('Bringing the note across…')
         const aFull = await getNote(A.id)
         const body = (B.content ?? '').replace(/^#[^\n]*\n?/, '').trim()
-        const merged = `${aFull.content ?? ''}\n\n---\n*Merged from ${entityName(B)}:*\n\n${body}\n`
+        const merged = `${aFull.content ?? ''}\n\n---\n*Merged from ${entityLeaf(B)}:*\n\n${body}\n`
         await patchNote(A.id, { content: merged })
       }
 
