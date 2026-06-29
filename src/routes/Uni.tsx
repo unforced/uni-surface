@@ -136,6 +136,10 @@ export function Uni() {
         },
         onRemove: (id) =>
           setMsgs((prev) => {
+            // Deletes broadcast vault-wide (the remove payload is a thin id ref,
+            // un-scope-matchable) — so cross-thread deletes reach this scoped
+            // stream too. Skip the Map rebuild + re-render when we don't hold it.
+            if (!prev.has(id)) return prev
             const next = new Map(prev)
             next.delete(id)
             return next
