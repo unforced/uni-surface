@@ -2430,9 +2430,9 @@ button { font-family: inherit; cursor: pointer; }
 .fd-act-when { font-size: 11.5px; color: var(--ink-faint); flex: none; }
 .fd-act-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--clay); flex: none; }
 
-/* "← all agents" back-link in an agent conversation's header */
-.chan-allagents { color: var(--clay); text-decoration: none; }
-.chan-allagents:hover { text-decoration: underline; }
+/* "thread ↗" raw-note link in the Uni conversation header */
+.chan-thread-link { color: var(--clay); text-decoration: none; }
+.chan-thread-link:hover { text-decoration: underline; }
 
 /* Raw metadata panel on the note view — the data behind any surface. */
 .note-metadata { margin: 22px 0; }

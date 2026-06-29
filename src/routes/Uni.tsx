@@ -355,7 +355,7 @@ export function Uni() {
           {threadId && (
             <>
               {' · '}
-              <Link to={`/note/${encodeURIComponent(threadId)}`} className="chan-allagents" title="Open this thread (agent/thread) as a raw note">
+              <Link to={`/note/${encodeURIComponent(threadId)}`} className="chan-thread-link" title="Open this thread (agent/thread) as a raw note">
                 thread ↗
               </Link>
             </>
