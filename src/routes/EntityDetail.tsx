@@ -23,8 +23,11 @@ import {
   structuralConnections,
   groundedIn,
   developsRefs,
+  threadsAbout,
+  threadAgentKey,
   formatRelative,
 } from '../vault/util'
+import { agentHref } from '../vault/channels'
 import { RELATIONSHIP_LABELS } from '../vault/types'
 
 // type-specific metadata fields to surface
@@ -72,13 +75,22 @@ export function EntityDetail() {
     return settled.filter((n): n is Note => n !== null)
   }, [developIds])
 
+  // The marquee strand: agent threads ABOUT this entity (inbound `about` edges).
+  const threadRefs = useMemo(() => (data ? threadsAbout(data) : []), [data])
+
   const isEndeavor = data ? entityTypeOf(data) === 'project' : false
 
   return (
     <div className="page">
-      <Link to="/browse" className="back-link">
-        <BackIcon /> Browse
-      </Link>
+      {/* Context-sensitive back: return wherever the user came from. A deep
+          link (no in-app history) has nothing to go back to → fall to Browse. */}
+      <button
+        type="button"
+        className="back-link"
+        onClick={() => (window.history.length > 1 ? nav(-1) : nav('/browse'))}
+      >
+        <BackIcon /> Back
+      </button>
 
       {loading && <Loading />}
       {Boolean(error) && <ErrorBanner error={error} onRetry={reload} />}
@@ -89,6 +101,7 @@ export function EntityDetail() {
 
           <div className="detail-cols">
             <div>
+              <Threads threads={threadRefs} />
               {isEndeavor && (
                 <WorkingNotes notes={developNotes.data ?? []} loading={developNotes.loading} />
               )}
@@ -169,6 +182,38 @@ function GroundedIn({ entity, captureNotes }: { entity: Note; captureNotes: Note
             <Link key={c.id} to={captureHref(c)} className="grounded-cite">
               {when && <span className="gc-when">{formatRelative(when)}</span>}
               <span className="gc-text">{preview}</span>
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// The marquee strand: the agent threads ABOUT this entity. Each thread is a row
+// linking to its agent's channel view (/agent/<agent>) — the conversation
+// actively tending this. Hidden when nothing links here.
+function Threads({ threads }: { threads: NoteRef[] }) {
+  if (threads.length === 0) return null
+  return (
+    <div className="threads-strand">
+      <div className="section-title">Threads</div>
+      <p className="threads-hint">Agent threads tending this.</p>
+      <div className="related-list">
+        {threads.map((t) => {
+          const agent = threadAgentKey(t)
+          const turns = String(t.metadata?.turn_count ?? '').trim()
+          return (
+            <Link key={t.id} to={agentHref(agent)} className="board-item">
+              <div className="bi-name" style={{ fontSize: 13.5 }}>
+                <span className="status-dot" style={{ background: 'var(--tc, var(--ink-faint))' }} />
+                {agent || 'thread'}
+                {turns && (
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ink-faint)' }}>
+                    {turns} turn{turns === '1' ? '' : 's'}
+                  </span>
+                )}
+              </div>
             </Link>
           )
         })}

@@ -241,9 +241,29 @@ export function mentionSnippet(
 
 // ---- Entities ----
 
-export function entityName(ref: NoteRef | Note): string {
-  // Path is like "People/Adam Elfers" → "Adam Elfers"
+// The raw final path segment ("People/Adam Elfers" → "Adam Elfers"). This is the
+// note's literal name — use it for any OPERATION keyed on the name (rename/merge
+// search + content-rewrite + alias registration), never the display-massaged
+// entityName, or those name-based rewrites corrupt the wrong string.
+export function entityLeaf(ref: NoteRef | Note): string {
   return ref.path.split('/').pop() ?? ref.path
+}
+
+// Leaf names that signal "this note is the index of its folder" — its display
+// name should be the folder, not the leaf. A hub like
+// "Projects/Eco-Civilization Book Club/Overview" reads as the project, not
+// "Overview". Case-insensitive.
+const INDEX_LEAVES = new Set(['overview', 'index', 'readme', '_index', 'home'])
+
+// The DISPLAY name for an entity. Usually the path leaf, but for an index-like
+// leaf with a parent folder, the folder ("…/Eco-Civilization Book Club/Overview"
+// → "Eco-Civilization Book Club"). Display-only — see entityLeaf for operations.
+export function entityName(ref: NoteRef | Note): string {
+  const segs = ref.path.split('/')
+  const leaf = segs.pop() ?? ref.path
+  const parent = segs[segs.length - 1]
+  if (parent && INDEX_LEAVES.has(leaf.toLowerCase())) return parent
+  return leaf
 }
 
 export function entitySummary(ref: NoteRef | Note): string {
@@ -385,6 +405,37 @@ export function developsRefs(entity: Note): NoteRef[] {
     out.push(ref)
   }
   return out
+}
+
+// An agent thread declares it is tending an entity by linking `about → entity`.
+// The inbound side of that edge is the marquee "Threads" strand on the entity
+// page: the conversations actively working on this.
+export const ABOUT = 'about'
+
+// The agent threads ABOUT this entity — inbound `about` edges, each thread note
+// (the link's source) deduped. Mirrors developsRefs/repliesTo.
+export function threadsAbout(entity: Note): NoteRef[] {
+  const out: NoteRef[] = []
+  const seen = new Set<string>()
+  for (const l of entity.links ?? []) {
+    if (l.targetId !== entity.id || l.relationship !== ABOUT) continue
+    const ref = l.sourceNote
+    if (!ref || seen.has(ref.id)) continue
+    seen.add(ref.id)
+    out.push(ref)
+  }
+  return out
+}
+
+// The agent that owns a thread ref → its routing key for `/agent/<agent>`.
+// Prefer the stamped `metadata.agent` (what the daemon writes; mirrors
+// channels.noteAgentKey); fall back to the 2nd path segment of
+// "Threads/<agent>/<thread>". Empty when neither is present.
+export function threadAgentKey(ref: NoteRef): string {
+  const stamped = String(ref.metadata?.agent ?? '').trim()
+  if (stamped) return stamped
+  const segs = ref.path.split('/')
+  return (segs[1] ?? '').trim()
 }
 
 // Replies threaded under a surface: captures with an inbound `responds-to` edge.
