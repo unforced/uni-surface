@@ -160,6 +160,7 @@ function Shell() {
           <nav className="nav">
             <NavLink to="/" end>Home</NavLink>
             <NavLink to="/today">Today</NavLink>
+            <NavLink to="/projects">Projects</NavLink>
             <NavLink to="/inbox">For You</NavLink>
             <NavLink to="/agents">Agents</NavLink>
             <NavLink to="/weave" className={({ isActive }) => (isActive ? 'active nav-proposals' : 'nav-proposals')}>
