@@ -162,6 +162,31 @@ button { font-family: inherit; cursor: pointer; }
 
 .topbar-spacer { flex: 1; }
 
+/* ── Mobile bottom tab bar ─────────────────────────────
+   The five-item spine, shown only on small screens. Always in the DOM; the
+   media query at the bottom of this block flips desktop nav ⇄ mobile tabbar. */
+.tabbar { display: none; }
+.tab {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px;
+  padding: 7px 2px;
+  background: none; border: none;
+  color: var(--ink-faint);
+  font-size: 11px; font-weight: 500; letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: color 0.18s ease;
+  min-width: 0;
+}
+.tab svg { width: 21px; height: 21px; }
+.tab span { line-height: 1; }
+.tab:hover { color: var(--ink-soft); }
+.tab.active { color: var(--clay); }
+
+/* Floating capture — mobile only. Sits just above the tab bar, clears the
+   safe-area inset, and uses the clay accent so capture stays unmistakable. */
+.tab-capture-fab { display: none; }
+
 .icon-btn {
   border: 1px solid var(--line);
   background: var(--surface);
@@ -199,6 +224,40 @@ button { font-family: inherit; cursor: pointer; }
   max-width: var(--maxw);
   margin: 0 auto;
   padding: 34px 24px 90px;
+}
+
+/* ── Mobile spine: tabbar replaces the cramped top-row nav ────────────────
+   Below 720px the horizontal desktop nav is hidden and the bottom tab bar
+   takes over. The top bar keeps brand · search · ⋯; capture moves to the
+   floating ＋ so it stays one tap away. */
+@media (max-width: 720px) {
+  .nav { display: none; }
+  /* The top-bar capture button is replaced by the floating ＋ on mobile. */
+  .topbar .capture-trigger { display: none; }
+  /* Reclaim room: let search collapse to its icon + ⌘K. */
+  .search-trigger { min-width: 0; }
+  .search-trigger span { display: none; }
+
+  .tabbar {
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    backdrop-filter: blur(12px) saturate(1.2);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    border-top: 1px solid var(--line-soft);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tab-capture-fab {
+    display: inline-flex; align-items: center; justify-content: center;
+    position: fixed; right: 18px; z-index: 46;
+    bottom: calc(64px + env(safe-area-inset-bottom) + 16px);
+    width: 52px; height: 52px;
+    border-radius: var(--r-pill);
+    background: var(--clay); color: #fff; border: none;
+    box-shadow: var(--shadow-lift);
+  }
+  .tab-capture-fab svg { width: 22px; height: 22px; }
+  /* Clear the fixed tabbar so content never hides behind it. */
+  .page { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 
 /* ── Today layout ─────────────────────────────────── */
@@ -1097,6 +1156,32 @@ button { font-family: inherit; cursor: pointer; }
 .weave-tab.sel .weave-tab-count { background: var(--clay); color: #fff; border-color: transparent; }
 .weave-panel { animation: fade 0.2s ease; }
 
+/* ── Section lenses: Projects / Dev / Writing / Life read as one board ──
+   A calm pill row (same family as .weave-tabs) atop each lensed page. */
+.lens-tabs {
+  display: inline-flex; gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  margin-bottom: 22px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.lens-tab {
+  display: inline-flex; align-items: center; white-space: nowrap;
+  color: var(--ink-soft); font-size: 13.5px; font-weight: 600;
+  padding: 6px 15px; border-radius: var(--r-pill);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.lens-tab:hover { color: var(--ink); }
+.lens-tab.sel {
+  background: var(--surface);
+  color: var(--clay);
+  box-shadow: var(--shadow-soft);
+}
+
 .proposal-group { margin-bottom: 30px; }
 .proposal-group-head {
   display: flex; align-items: center; gap: 10px;
@@ -1971,6 +2056,24 @@ button { font-family: inherit; cursor: pointer; }
 .overflow-item:hover, .overflow-item.active { background: var(--cream-2); color: var(--clay); }
 .overflow-sep { height: 1px; background: var(--line-soft); margin: 5px 4px; }
 
+/* Small muted group labels inside the drawer. */
+.overflow-label {
+  font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600;
+  padding: 9px 11px 3px;
+}
+/* The Weave drawer item carries a quiet inline count (NOT a loud red badge). */
+.overflow-item-count { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.overflow-count {
+  font-size: 11.5px; font-weight: 600; line-height: 1;
+  color: var(--ink-faint);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  min-width: 18px; height: 18px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
 /* Tag schema view. */
 .schema-tree { margin-top: 6px; }
 .schema-node { padding: 2px 0; }
@@ -2137,6 +2240,52 @@ button { font-family: inherit; cursor: pointer; }
 .uni-log-row:hover { border-color: var(--clay-soft); }
 .uni-log-title { font-size: 13px; font-weight: 600; color: var(--ink); }
 .uni-log-sum { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+
+/* ── "What Uni's working on" — the calm strip above the composer in /uni ──
+   Collapsible; folded by default it's a single quiet line (or a live working
+   summary). Open, it shows working pills, the recent log, and the foldable
+   self-state. Styled like Home's glance, not the old agent config cards. */
+.uni-work {
+  margin: 14px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.uni-work-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 10px 16px;
+  background: none; border: none; cursor: pointer; text-align: left;
+}
+.uni-work-title { display: inline-flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.uni-work-live { color: var(--clay); }
+.uni-work-caret { font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; }
+.uni-work-body { padding: 4px 16px 14px; border-top: 1px solid var(--line-soft); }
+.uni-work-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.uni-work-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px; border-radius: var(--r-pill);
+  background: var(--terracotta-wash); color: var(--clay);
+  font-size: 12.5px; font-weight: 600; text-decoration: none;
+}
+.uni-work-pill:hover { box-shadow: var(--shadow-soft); }
+.uni-work-recent { margin: 12px 0; }
+.uni-work-label {
+  font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600; margin-bottom: 7px;
+}
+.uni-work-row {
+  display: flex; flex-direction: column; gap: 1px; text-decoration: none;
+  padding: 7px 11px; border-radius: 8px; margin-bottom: 6px;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.uni-work-row:hover { border-color: var(--clay-soft); }
+.uni-work-row-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.uni-work-row-sum { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+.uni-work-manage {
+  display: inline-block; margin-top: 4px;
+  font-size: 12.5px; color: var(--clay); text-decoration: none; font-weight: 500;
+}
+.uni-work-manage:hover { text-decoration: underline; }
 
 /* ── For You feed ─────────────────────────────────────────────────────────
    The membrane of the proactive system: named cards (surfaces/noticings,
