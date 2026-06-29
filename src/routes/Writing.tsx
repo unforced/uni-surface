@@ -4,6 +4,7 @@ import { entityTypeOf } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { entityHref, entityName, noteHref } from '../vault/util'
 import { Loading, ErrorBanner } from '../components/common'
+import { SectionLenses } from '../components/SectionLenses'
 
 // The Writing section — the writing domain's home. Pieces (writing-tagged
 // project-family entities) + the themes that thread them. Toward: the vault as
@@ -16,10 +17,11 @@ export function Writing() {
 
   return (
     <div className="page">
+      <SectionLenses active="writing" />
       <div className="page-head">
         <div className="kicker">unforced.org</div>
         <h1>Writing</h1>
-        <p className="sub">Your pieces and the themes that thread them — the vault as the source, the site a projection.</p>
+        <p className="sub">The work through the writing lens — your pieces and the themes that thread them. The vault as the source, the site a projection.</p>
       </div>
 
       {Boolean(pieces.error) && <ErrorBanner error={pieces.error} onRetry={pieces.reload} />}
