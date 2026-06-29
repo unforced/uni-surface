@@ -11,6 +11,7 @@ import { Agents } from './routes/Agents'
 import { Today } from './routes/Today'
 import { Inbox } from './routes/Inbox'
 import { Dev } from './routes/Dev'
+import { Projects } from './routes/Projects'
 import { Writing } from './routes/Writing'
 import { Schema } from './routes/Schema'
 import { Arc } from './routes/Arc'
@@ -46,6 +47,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <Home /> },
         { path: 'today', element: <Today /> },
+        { path: 'projects', element: <Projects /> },
         { path: 'write', element: <Write /> },
         { path: 'agents', element: <Agents /> },
         { path: 'arms', element: <Navigate to="/agents" replace /> },

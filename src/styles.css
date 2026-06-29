@@ -1627,6 +1627,24 @@ button { font-family: inherit; cursor: pointer; }
 /* Dev section — the development domain home. */
 .dev-section { margin-bottom: 26px; }
 .dev-builds { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 4px; }
+
+/* Projects dashboard — card meta row (role + parachute chip) + collapsed Resting. */
+.proj-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 4px; }
+.proj-role { font-size: 11.5px; color: var(--ink-faint); }
+.proj-chip {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--clay); background: var(--terracotta-wash);
+  border-radius: var(--r-pill); padding: 1px 8px;
+}
+.proj-resting > summary {
+  cursor: pointer; list-style: none; font-family: var(--serif);
+  font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600;
+}
+.proj-resting > summary::-webkit-details-marker { display: none; }
+.proj-resting > summary:hover { color: var(--ink-soft); }
+.proj-resting[open] > summary { margin-bottom: 14px; }
+.proj-resting-grid { margin-top: 0; }
 .dev-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 @media (max-width: 720px) { .dev-cols { grid-template-columns: 1fr; } }
 .dev-hint { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 10px; font-style: italic; }
