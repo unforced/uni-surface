@@ -108,8 +108,16 @@ export function Uni() {
     const client = getClient()
     if (!client) return
     const inChannel = (n: Note) => noteAgentKey(n) === channel
+    // Scope the subscription to THIS conversation server-side. The old
+    // `{ tag: MSG_TAG }` subscribed to EVERY agent message across all threads,
+    // then filtered client-side — an unbounded snapshot (every channel's whole
+    // history) that loaded slowly and held a needlessly wide live stream. The
+    // read-side routing key is `noteAgentKey = agent || channel`, and the
+    // channel→agent cutover backfilled `agent` on every message, so
+    // `meta[agent]=channel` returns exactly this conversation, snapshot + live.
+    // `inChannel` below stays as belt-and-suspenders.
     const unsub = client.subscribe(
-      { tag: MSG_TAG },
+      { tag: MSG_TAG, metadata: { agent: channel } },
       {
         onSnapshot: (notes) => {
           const m = new Map<string, Note>()
@@ -128,6 +136,10 @@ export function Uni() {
         },
         onRemove: (id) =>
           setMsgs((prev) => {
+            // Deletes broadcast vault-wide (the remove payload is a thin id ref,
+            // un-scope-matchable) — so cross-thread deletes reach this scoped
+            // stream too. Skip the Map rebuild + re-render when we don't hold it.
+            if (!prev.has(id)) return prev
             const next = new Map(prev)
             next.delete(id)
             return next
