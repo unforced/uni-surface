@@ -3,10 +3,10 @@ import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Note } from '../vault/types'
 import { getClient } from '../vault/surface'
 import { useAsync } from '../vault/useAsync'
+import { getNote, listNotes, uploadStorageFile, addAttachment } from '../vault/api'
 import { Markdown } from '../components/Markdown'
 import { SenderChip } from '../components/ChannelMessageCard'
-import { uploadStorageFile, addAttachment } from '../vault/api'
-import { noteHref } from '../vault/util'
+import { noteHref, formatRelative } from '../vault/util'
 import { TurnStream } from '../components/TurnStream'
 import { subscribeTurnEvents, foldTurn, emptyTurn, type TurnState } from '../vault/turnEvents'
 import { ensureAgentToken, getAgentHubOrigin, hasAgentToken, beginAgentOAuth } from '../vault/agentAuth'
@@ -30,15 +30,18 @@ import {
   stashAgentReturn,
 } from '../vault/channels'
 
-// The channels organ — talking to the agent through the vault, live.
-// A message is an agent/message note; sending writes an inbound note, the
-// agent replies with an outbound one, and both arrive in realtime over the SSE
-// subscription (no polling). Aaron's messages right, the agent's left — each
-// with its own sender chip; reports and dispatches render as cards.
-export function Channels() {
-  // `/agent/:name` addresses one agent's conversation; the bare `/channels`
-  // route falls back to the last-selected channel. The route param is the source
-  // of truth when present.
+// Uni — the one place you talk to Uni, conversation-first. This is the merge of
+// the old Agents window and Channels chat: the conversation IS the body. Sending
+// writes an inbound agent/message note, Uni replies with an outbound one, and
+// both arrive live over the SSE subscription (no polling). Aaron's messages
+// right, Uni's left — reports and dispatches render as cards.
+//
+// The bare /uni route talks to the default 'uni' thread; /agent/:name selects a
+// specific thread. We keep the language of *threads* here, not channels/agents —
+// the machinery (definitions, schedules, prompts) lives on the Manage page.
+export function Uni() {
+  // `/agent/:name` addresses one thread; the bare `/uni` route falls back to the
+  // last-selected one, defaulting to 'uni'. The route param is source of truth.
   const { name: routeName } = useParams<{ name: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -56,25 +59,37 @@ export function Channels() {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   // An optional file to attach to the next message (uploaded to vault storage +
-  // attached to the message note). NOTE: the agent's turn receiving the file is
-  // a daemon capability (see the CC ask) — the surface gets it into the vault.
+  // attached to the message note).
   const [file, setFile] = useState<File | null>(null)
   const [live, setLive] = useState(false)
   const [picker, setPicker] = useState(false)
   const [thinking, setThinking] = useState(false)
-  // The current agent's thread note id — so the header can open the raw
-  // agent/thread note (the rolling summary + status + session id behind this
-  // conversation). Most-recent thread when an agent has more than one.
+  // The current thread note id — so the header can open the raw agent/thread
+  // note (rolling summary + status + session id). Most-recent when there's >1.
   const [threadId, setThreadId] = useState<string | null>(null)
   const [turn, setTurn] = useState<TurnState>(emptyTurn())
   const [agentReady] = useState(() => hasAgentToken())
+  // "What Uni's working on" strip + the foldable self-state — calm by default.
+  const [working, setWorking] = useState<string[]>([])
+  const [workOpen, setWorkOpen] = useState(false)
+  const [nowOpen, setNowOpen] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const threadsRef = useRef<Map<string, Note>>(new Map())
 
+  // Self-state + recent log for the working strip. Cheap queries; soft-fail so a
+  // missing layer never blanks the conversation.
+  const now = useAsync(() => getNote('Uni/Now').catch(() => null), [])
+  const log = useAsync(
+    () =>
+      listNotes({ pathPrefix: 'Uni/Log/', sort: 'desc', limit: 5, includeMetadata: true }).catch(
+        () => [] as Note[],
+      ),
+    [],
+  )
+
   // Prefill the composer when arriving via a note's "Reference in Uni" action
-  // (/agent/:name?ref=<path>): drop a wikilink to the note so the message links
-  // back to it in the graph. Strip the param after, so resend/refresh is clean
-  // and an already-typed draft is never clobbered.
+  // (/agent/:name?ref=<path>): drop a wikilink so the message links back in the
+  // graph. Strip the param after; never clobber an already-typed draft.
   useEffect(() => {
     const ref = searchParams.get('ref')
     if (!ref) return
@@ -85,17 +100,14 @@ export function Channels() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  // The agent roster for the switcher. Failure is fine — the choices fall back
-  // to the current channel + 'uni' and the free-text "other…" path still works.
+  // The thread roster for the menu. Failure is fine — choices fall back to the
+  // current thread + 'uni' and the free-text "other…" path still works.
   const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
 
   useEffect(() => {
     const client = getClient()
     if (!client) return
     const inChannel = (n: Note) => noteAgentKey(n) === channel
-    // VaultClient.subscribe carries the bearer in the Authorization header (no
-    // token in the query string) and self-corrects on reconnect with a fresh
-    // snapshot + refresh-on-401. onStatus drives the live indicator.
     const unsub = client.subscribe(
       { tag: MSG_TAG },
       {
@@ -127,40 +139,40 @@ export function Channels() {
     return unsub
   }, [channel])
 
-  // Live "thinking…" pill: the agent's agent/thread note carries
-  // metadata.status ('working' during a turn, 'ok'/'error' after) — written by
-  // the daemon today. We read that existing state over the same live-query (no
-  // new writes, no new auth) and light the pill while any of this agent's
-  // threads is working.
+  // Live "thinking…" pill for THIS thread + the working set across all threads
+  // (for the strip). Reads the existing agent/thread metadata.status ('working'
+  // during a turn) over the same live-query — no new writes, no new auth.
   useEffect(() => {
     threadsRef.current = new Map()
     setThinking(false)
     setThreadId(null)
+    setWorking([])
     const client = getClient()
     if (!client) return
-    const forAgent = (n: Note) => noteAgentKey(n) === channel
+    const forChannel = (n: Note) => noteAgentKey(n) === channel
     const isWorking = (n: Note) => String(n.metadata?.status ?? '') === 'working'
     const recompute = () => {
-      const arr = [...threadsRef.current.values()]
-      setThinking(arr.some(isWorking))
-      const latest = arr
+      const all = [...threadsRef.current.values()]
+      const mine = all.filter(forChannel)
+      setThinking(mine.some(isWorking))
+      const latest = mine
         .slice()
         .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))[0]
       setThreadId(latest?.id ?? null)
+      // Every thread currently working (any channel) — drives the strip's pills.
+      const names = new Set<string>()
+      for (const n of all) if (isWorking(n)) names.add(noteAgentKey(n))
+      setWorking([...names].filter(Boolean))
     }
     const unsub = client.subscribe(
       { tag: THREAD_TAG },
       {
         onSnapshot: (notes) => {
-          threadsRef.current = new Map(
-            (notes as unknown as Note[]).filter(forAgent).map((n) => [n.id, n]),
-          )
+          threadsRef.current = new Map((notes as unknown as Note[]).map((n) => [n.id, n]))
           recompute()
         },
         onUpsert: (note) => {
-          const n = note as unknown as Note
-          if (!forAgent(n)) return
-          threadsRef.current.set(n.id, n)
+          threadsRef.current.set((note as unknown as Note).id, note as unknown as Note)
           recompute()
         },
         onRemove: (id) => {
@@ -172,10 +184,9 @@ export function Channels() {
     return unsub
   }, [channel])
 
-  // (d) The rich "watch it work" stream — layers onto the pill when an
-  // agent:read token is present. Opens the daemon turn-events SSE for this
-  // channel and folds events into the live turn. No token → no-op (the pill
-  // still works on the thread status alone).
+  // The rich "watch it work" stream — layers onto the pill when an agent:read
+  // token is present. Opens the daemon turn-events SSE for this thread and folds
+  // events into the live turn. No token → no-op (the pill still works).
   useEffect(() => {
     let unsub = () => {}
     let cancelled = false
@@ -194,15 +205,16 @@ export function Channels() {
     }
   }, [channel])
 
-  // Clear the streamed turn once it settles — the final answer lands as a
-  // normal message bubble, so we don't want the streamed copy lingering.
+  // Clear the streamed turn once it settles — the final answer lands as a normal
+  // bubble, so we don't want the streamed copy lingering.
   useEffect(() => {
     if (!thinking) setTurn(emptyTurn())
   }, [thinking])
 
-  // What the switcher shows: the roster, with 'uni' (and whatever channel is
-  // currently selected) always present even when the query came back empty.
-  const agentChoices = useMemo(() => {
+  // What the threads menu shows: the roster, with 'uni' (and the current thread)
+  // always present even when the query came back empty. Presented as plain
+  // thread names — the agent machinery stays on the Manage page.
+  const threadChoices = useMemo(() => {
     const agents = [...(roster.data ?? [])]
     for (const c of [channel, 'uni']) {
       if (!agents.some((a) => a.channel === c)) {
@@ -224,11 +236,24 @@ export function Channels() {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [ordered.length])
 
-  // Opening the thread marks its agent messages read in the vault — keeps the
-  // For You feed, Home, and the Agents unread badges honest across devices.
+  // Opening the thread marks its messages read in the vault — keeps For You,
+  // Home, and the Manage unread badges honest across devices.
   useEffect(() => {
     void markRead(ordered)
   }, [ordered])
+
+  // The thread title: 'uni' reads as the proper name "Uni"; any other thread
+  // shows its own name (no "#" prefix — these are threads, not channels).
+  const title = channel === 'uni' ? 'Uni' : channel
+
+  // The strip's live-working summary (excludes nothing — it's the system pulse).
+  const workingLabel = useMemo(() => {
+    if (working.length === 0) return null
+    if (working.length === 1) return working[0] === 'uni' ? 'Uni is working' : `${working[0]} is working`
+    return working.includes('uni')
+      ? `Uni and ${working.length - 1} other${working.length > 2 ? 's' : ''} working`
+      : `${working.length} threads working`
+  }, [working])
 
   async function send() {
     const body = text.trim()
@@ -237,8 +262,8 @@ export function Channels() {
     try {
       if (file) {
         // Upload to vault storage, send the message, then attach the file to the
-        // message note. The body names the file + its storage path so an agent
-        // (which has vault access) can locate it even before the daemon passes
+        // message note. The body names the file + its storage path so Uni (which
+        // has vault access) can locate it even before the daemon passes
         // attachments into the turn directly.
         const uploaded = await uploadStorageFile(file)
         const ref = `📎 Attached **${file.name}** \`${uploaded.path}\``
@@ -258,19 +283,19 @@ export function Channels() {
     }
   }
 
-  function pickChannel(c: string) {
+  function pickThread(c: string) {
     setPicker(false)
     if (!c || c === channel) return
-    // Navigate to the canonical per-agent URL; the routeName effect resets the
+    // Navigate to the canonical per-thread URL; the routeName effect resets the
     // transcript and switches the live subscription.
     navigate(agentHref(c))
   }
 
-  // Escape hatch for a channel that has no arm note (yet).
-  function customChannel() {
+  // Escape hatch for a thread that has no definition note (yet).
+  function customThread() {
     setPicker(false)
-    const c = window.prompt('Channel name', channel)
-    if (c && c.trim()) pickChannel(c.trim())
+    const c = window.prompt('Thread name', channel)
+    if (c && c.trim()) pickThread(c.trim())
   }
 
   // One-time consent for the rich turn-stream: runs the isolated agent:read
@@ -293,38 +318,27 @@ export function Channels() {
   return (
     <div className="page" style={{ maxWidth: 740 }}>
       <div className="page-head">
-        <div className="kicker">
-          <Link to="/agents" className="chan-allagents">← all agents</Link> · how we talk
-          {threadId && (
-            <>
-              {' · '}
-              <Link to={`/note/${encodeURIComponent(threadId)}`} className="chan-allagents" title="Open this thread (agent/thread) as a raw note">
-                thread ↗
-              </Link>
-            </>
-          )}
-        </div>
         <h1>
-          #{channel}
+          {title}
           <span className="chan-switch">
-            <button className="rename-trigger" onClick={() => setPicker((v) => !v)}>switch</button>
+            <button className="rename-trigger" onClick={() => setPicker((v) => !v)}>threads ▾</button>
             {picker && (
               <>
                 <div className="overflow-scrim" onClick={() => setPicker(false)} />
                 <div className="chan-pop">
-                  {agentChoices.map((a) => (
+                  {threadChoices.map((a) => (
                     <button
                       key={a.channel}
                       className={`chan-item${a.channel === channel ? ' on' : ''}`}
                       title={a.summary || undefined}
-                      onClick={() => pickChannel(a.channel)}
+                      onClick={() => pickThread(a.channel)}
                     >
                       <span className={`status-dot ${statusDotClass(a.status)}`} />
-                      #{a.channel}
+                      {a.channel === 'uni' ? 'Uni' : a.channel}
                       {a.status && <span className="chan-status">{a.status}</span>}
                     </button>
                   ))}
-                  <button className="chan-item other" onClick={customChannel}>other…</button>
+                  <button className="chan-item other" onClick={customThread}>other…</button>
                 </div>
               </>
             )}
@@ -334,28 +348,36 @@ export function Channels() {
           <span className={`chat-dot${live ? ' on' : ''}`} />
           {live ? 'Live — talk to Uni; replies arrive in realtime.' : 'Connecting…'}
           {!agentReady && (
-            <button className="chat-enable" onClick={enableAgentDetail} title="Stream tool calls + partial replies as the agent works">
+            <button className="chat-enable" onClick={enableAgentDetail} title="Stream tool calls + partial replies as Uni works">
               watch it work ▸
             </button>
+          )}
+          {threadId && (
+            <>
+              {' · '}
+              <Link to={`/note/${encodeURIComponent(threadId)}`} className="chan-thread-link" title="Open this thread (agent/thread) as a raw note">
+                thread ↗
+              </Link>
+            </>
           )}
         </p>
       </div>
 
       <div className="chat">
         {ordered.length === 0 && live && (
-          <p className="chat-empty">No messages yet on #{channel}. Say something to begin.</p>
+          <p className="chat-empty">Nothing here yet. Say something to begin.</p>
         )}
         {ordered.map((m) => {
           const sender = senderOf(m)
-          // Self-vs-other by DIRECTION, not by sender name: inbound = the human
-          // (me), outbound = a session/arm. Robust to whatever handle stamped the
-          // note (the channel chat uses "operator", this UI uses "aaron").
+          // Self-vs-other by DIRECTION, not sender name: inbound = the human
+          // (me), outbound = a session/thread. Robust to whatever handle stamped
+          // the note (the channel chat uses "operator", this UI uses "aaron").
           const mine = !isOutbound(m)
           const kind = String(m.metadata?.kind ?? '')
           const isCard = kind === 'report' || kind === 'dispatch'
           const spark = kind === 'dispatch' ? sparkOf(m) : null
           const asks = kind === 'report' ? m.metadata?.asks : undefined
-          // CSS rows keep their historical names: .in = Aaron (right), .out = arm (left).
+          // CSS rows keep their historical names: .in = Aaron (right), .out = thread (left).
           return (
             <div key={m.id} className={`chat-row ${mine ? 'in' : 'out'}`}>
               <div className={`chat-bubble${isCard ? ` k-${kind}` : ''}`}>
@@ -387,7 +409,7 @@ export function Channels() {
         <TurnStream turn={turn} />
         {thinking && (
           <div className="chat-thinking" aria-live="polite">
-            <span className="ct-label">{channel} is thinking</span>
+            <span className="ct-label">{title} is thinking</span>
             <span className="ct-dots">
               <i />
               <i />
@@ -396,6 +418,80 @@ export function Channels() {
           </div>
         )}
         <div ref={endRef} />
+      </div>
+
+      {/* ── What Uni's working on — a calm, collapsible glance above the composer.
+          Live working pills + recent log + the foldable self-state. Styled like
+          Home's "Recent activity", not the old agent config cards. ── */}
+      <div className="uni-work">
+        <button className="uni-work-head" onClick={() => setWorkOpen((o) => !o)}>
+          <span className="uni-work-title">
+            {workingLabel ? (
+              <>
+                <span className="ct-dots"><i /><i /><i /></span>
+                <span className="uni-work-live">{workingLabel}…</span>
+              </>
+            ) : (
+              "What Uni's working on"
+            )}
+          </span>
+          <span className="uni-work-caret">{workOpen ? 'fold' : 'unfold'}</span>
+        </button>
+        {workOpen && (
+          <div className="uni-work-body">
+            {working.length > 0 && (
+              <div className="uni-work-pills">
+                {working.map((w) => (
+                  <Link key={w} to={agentHref(w)} className="uni-work-pill">
+                    <span className="ct-dots"><i /><i /><i /></span>
+                    {w === 'uni' ? 'Uni' : w}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {(log.data?.length ?? 0) > 0 && (
+              <div className="uni-work-recent">
+                <div className="uni-work-label">Recent</div>
+                {(log.data ?? []).map((n) => (
+                  <Link
+                    key={n.id}
+                    className="uni-work-row"
+                    to={`/note/${encodeURIComponent(n.path ?? n.id)}`}
+                  >
+                    <span className="uni-work-row-title">{(n.path ?? '').replace(/^Uni\/Log\//, '')}</span>
+                    {typeof n.metadata?.summary === 'string' && (
+                      <span className="uni-work-row-sum">{n.metadata.summary}</span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {now.data && (
+              <div className="uni-now">
+                <button className="uni-now-head" onClick={() => setNowOpen((o) => !o)}>
+                  <span className="uni-now-title">Uni / Now</span>
+                  <span className="uni-now-meta">
+                    tended {formatRelative(now.data.updatedAt ?? now.data.createdAt)} · {nowOpen ? 'fold' : 'unfold'}
+                  </span>
+                </button>
+                {nowOpen && (
+                  <div className="uni-now-body">
+                    <Markdown content={now.data.content ?? ''} />
+                    <Link className="uni-now-open" to={`/note/${encodeURIComponent(now.data.path ?? now.data.id)}`}>
+                      open as note ↗
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <Link className="uni-work-manage" to="/manage">
+              Manage agents &amp; schedules →
+            </Link>
+          </div>
+        )}
       </div>
 
       {file && (
@@ -416,7 +512,7 @@ export function Channels() {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={`Message #${channel}…  (⌘↵ to send)`}
+          placeholder={channel === 'uni' ? 'Talk to Uni…  (⌘↵ to send)' : `Message ${title}…  (⌘↵ to send)`}
           rows={2}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {

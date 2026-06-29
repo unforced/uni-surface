@@ -5,6 +5,7 @@ import { entityTypeOf } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { entityHref, entityName, noteHref, formatRelative } from '../vault/util'
 import { Loading, ErrorBanner } from '../components/common'
+import { SectionLenses } from '../components/SectionLenses'
 
 // The Dev section — the development domain's home. Builds (dev-tagged project
 // entities) + the craft second-brain (dev/pattern, dev/learning) + the work log
@@ -20,10 +21,11 @@ export function Dev() {
 
   return (
     <div className="page">
+      <SectionLenses active="dev" />
       <div className="page-head">
         <div className="kicker">unforced.dev</div>
         <h1>Dev</h1>
-        <p className="sub">Everything you're building — the builds, and the craft behind them.</p>
+        <p className="sub">The work through the dev lens — the builds, and the craft behind them.</p>
       </div>
 
       {Boolean(builds.error) && <ErrorBanner error={builds.error} onRetry={builds.reload} />}

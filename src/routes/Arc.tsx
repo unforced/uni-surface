@@ -5,6 +5,7 @@ import type { Note } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { Markdown } from '../components/Markdown'
 import { Loading, ErrorBanner } from '../components/common'
+import { SectionLenses } from '../components/SectionLenses'
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
@@ -76,10 +77,11 @@ export function Arc() {
 
   return (
     <div className="page" style={{ maxWidth: 820 }}>
+      <SectionLenses active="life" />
       <div className="page-head">
         <div className="kicker">unforced.life</div>
         <h1>The Arc</h1>
-        <p className="sub">The long view of your life — chapters, woven from everything beneath.</p>
+        <p className="sub">The work through the life lens — the long view, chapters woven from everything beneath.</p>
         <label className="time-jump arc-jump">
           jump to a day
           <input type="date" onChange={(e) => { if (e.target.value) nav(`/time/${e.target.value}`) }} />

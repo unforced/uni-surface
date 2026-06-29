@@ -5,6 +5,7 @@ import { entityTypeOf } from '../vault/types'
 import { useAsync } from '../vault/useAsync'
 import { entityHref, entityName } from '../vault/util'
 import { Loading, ErrorBanner } from '../components/common'
+import { SectionLenses } from '../components/SectionLenses'
 
 // The Projects dashboard — every endeavor as a card, grouped by status. Lives off
 // the graph: `#project` entities plus their subtypes (`#dev/build` software,
@@ -41,10 +42,11 @@ export function Projects() {
 
   return (
     <div className="page">
+      <SectionLenses active="projects" />
       <div className="page-head">
         <div className="kicker">the work</div>
-        <h1>Projects</h1>
-        <p className="sub">Every endeavor — what's live, what's stirring, and what's at rest.</p>
+        <h1>All work</h1>
+        <p className="sub">One board, every endeavor — what's live, what's stirring, and what's at rest. Switch the lens above to read it by domain.</p>
       </div>
 
       {Boolean(projects.error) && <ErrorBanner error={projects.error} onRetry={projects.reload} />}

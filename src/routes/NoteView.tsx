@@ -61,7 +61,7 @@ function TypedNotePanel({ note }: { note: Note }) {
           {a.model && <div><span className="nt-k">model</span> {a.model}</div>}
         </div>
         <div className="nt-actions">
-          <Link to={agentHref(a.name)}>open conversation →</Link> · <Link to="/agents">all agents →</Link>
+          <Link to={agentHref(a.name)}>open conversation →</Link> · <Link to="/manage">manage agents →</Link>
         </div>
       </section>
     )

@@ -11,7 +11,16 @@ import { Toast } from './components/common'
 import { UpdateBanner } from './components/UpdateBanner'
 import { SyncBadge } from './components/SyncBadge'
 import type { Note } from './vault/types'
-import { Seed, SearchIcon, PlusIcon } from './components/icons'
+import {
+  Seed,
+  SearchIcon,
+  PlusIcon,
+  HomeIcon,
+  UniIcon,
+  TodayIcon,
+  ProjectsIcon,
+  BrowseIcon,
+} from './components/icons'
 
 // Broadcast so the active route (e.g. Today) can refresh after a capture lands,
 // without threading a callback through the router.
@@ -157,16 +166,13 @@ function Shell() {
             <span className="seed"><Seed /></span>
             Vault
           </Link>
+          {/* The spine: exactly five destinations. Everything else lives in
+              the ⋯ drawer (and the mobile bottom tab bar mirrors these five). */}
           <nav className="nav">
             <NavLink to="/" end>Home</NavLink>
+            <NavLink to="/uni">Uni</NavLink>
             <NavLink to="/today">Today</NavLink>
             <NavLink to="/projects">Projects</NavLink>
-            <NavLink to="/inbox">For You</NavLink>
-            <NavLink to="/agents">Agents</NavLink>
-            <NavLink to="/weave" className={({ isActive }) => (isActive ? 'active nav-proposals' : 'nav-proposals')}>
-              Weave
-              {weaveCount ? <span className="nav-badge">{weaveCount}</span> : null}
-            </NavLink>
             <NavLink to="/browse">Browse</NavLink>
           </nav>
           <div className="topbar-spacer" />
@@ -188,11 +194,19 @@ function Shell() {
               <>
                 <div className="overflow-scrim" onClick={() => setMenuOpen(false)} />
                 <div className="overflow-pop">
-                  <NavLink to="/write" className="overflow-item" onClick={() => setMenuOpen(false)}>Morning pages · write</NavLink>
-                  <NavLink to="/dev" className="overflow-item" onClick={() => setMenuOpen(false)}>Dev</NavLink>
-                  <NavLink to="/writing" className="overflow-item" onClick={() => setMenuOpen(false)}>Writing</NavLink>
-                  <NavLink to="/arc" className="overflow-item" onClick={() => setMenuOpen(false)}>Life · the Arc</NavLink>
+                  <NavLink to="/inbox" className="overflow-item" onClick={() => setMenuOpen(false)}>For you</NavLink>
+
+                  <div className="overflow-label">Tend the graph</div>
+                  <NavLink to="/weave" className="overflow-item overflow-item-count" onClick={() => setMenuOpen(false)}>
+                    <span>Weave</span>
+                    {weaveCount ? <span className="overflow-count">{weaveCount}</span> : null}
+                  </NavLink>
                   <NavLink to="/schema" className="overflow-item" onClick={() => setMenuOpen(false)}>Tag schema</NavLink>
+
+                  <NavLink to="/write" className="overflow-item" onClick={() => setMenuOpen(false)}>Morning pages · write</NavLink>
+
+                  <NavLink to="/manage" className="overflow-item" onClick={() => setMenuOpen(false)}>Manage agents &amp; schedules</NavLink>
+
                   <div className="overflow-sep" />
                   <button className="overflow-item" onClick={() => { toggle(); setMenuOpen(false) }}>
                     {theme === 'light' ? 'Dark mode' : 'Light mode'}
@@ -208,6 +222,38 @@ function Shell() {
       <main>
         <Outlet />
       </main>
+
+      {/* Mobile bottom tab bar — the five-item spine as icon-over-label, always
+          in the DOM and shown only on small screens (CSS). Capture stays one tap
+          away via the floating ＋ button (.tab-capture-fab) anchored above it. */}
+      <nav className="tabbar">
+        <NavLink to="/" end className="tab">
+          <HomeIcon />
+          <span>Home</span>
+        </NavLink>
+        <NavLink to="/uni" className="tab">
+          <UniIcon />
+          <span>Uni</span>
+        </NavLink>
+        <NavLink to="/today" className="tab">
+          <TodayIcon />
+          <span>Today</span>
+        </NavLink>
+        <NavLink to="/projects" className="tab">
+          <ProjectsIcon />
+          <span>Projects</span>
+        </NavLink>
+        <NavLink to="/browse" className="tab">
+          <BrowseIcon />
+          <span>Browse</span>
+        </NavLink>
+      </nav>
+
+      {/* Floating capture — mobile-only (CSS), so ＋New capture stays reachable
+          when the top bar's button is hidden on small screens. */}
+      <button className="tab-capture-fab" onClick={() => setCapturing(true)} aria-label="New capture">
+        <PlusIcon />
+      </button>
 
       <UpdateBanner />
       {search && <SearchPalette onClose={() => setSearch(false)} />}

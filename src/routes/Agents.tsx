@@ -28,11 +28,11 @@ import {
   noteAgentKey,
 } from '../vault/channels'
 
-// The window into Uni itself — the system's self-state (Uni/Now), the agent
-// roster (every agent/definition with its config, channel, pulse and unread
-// count), and the recent session log. This is mission control: the one place
-// that shows the whole octopus at a glance. Read-only — agents are created and
-// edited in the agent app; this is the window, not the lever.
+// The Manage page — the lever, not the window. Every agent/definition with its
+// config, schedules, and prompt; create/edit/pause/resume; enable/disable;
+// Uni/Now and the recent session log. This is the operational control room,
+// reachable only from the ⋯ drawer. To *talk* to Uni, go to /uni — that's the
+// window; this is where you tune the machinery behind it.
 export function Agents() {
   const roster = useAsync(() => fetchAgentRoster(), [])
   // ONE query for all outbound messages; per-agent stats are grouped client-side.
@@ -208,9 +208,9 @@ export function Agents() {
   return (
     <div className="page" style={{ maxWidth: 760 }}>
       <div className="page-head">
-        <div className="kicker">the octopus</div>
-        <h1>Uni</h1>
-        <p className="sub">What Uni is up to — its self-state, every agent with its config and channel, and the recent log.</p>
+        <div className="kicker">manage</div>
+        <h1>Agents &amp; schedules</h1>
+        <p className="sub">Every agent definition — its config, schedules, and prompt. The lever, not the window; to talk to Uni, go to <Link to="/uni">Uni</Link>.</p>
       </div>
 
       {now.data && (
