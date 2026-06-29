@@ -78,6 +78,13 @@ export function Uni() {
   const [ctxOpen, setCtxOpen] = useState(false)
   const [defOpen, setDefOpen] = useState(false)
   const [threadCtxOpen, setThreadCtxOpen] = useState(false)
+  // Collapse the context panels when switching threads, so a fresh thread
+  // doesn't inherit the prior one's open/closed state (reviewer nit, PR #8).
+  useEffect(() => {
+    setCtxOpen(false)
+    setDefOpen(false)
+    setThreadCtxOpen(false)
+  }, [channel])
   const endRef = useRef<HTMLDivElement>(null)
   const threadsRef = useRef<Map<string, Note>>(new Map())
 
@@ -245,7 +252,7 @@ export function Uni() {
   // you can't see to leave. Presented as plain thread names — the agent machinery
   // stays on the Manage page (which still lists every definition).
   const threadChoices = useMemo(() => {
-    const agents = (roster.data ?? []).filter((a) => a.status === 'enabled')
+    const agents = (roster.data ?? []).filter((a) => a.status !== 'disabled')
     for (const c of [channel, 'uni']) {
       if (!agents.some((a) => a.channel === c)) {
         agents.unshift({
