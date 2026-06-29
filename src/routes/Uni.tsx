@@ -73,6 +73,11 @@ export function Uni() {
   const [working, setWorking] = useState<string[]>([])
   const [workOpen, setWorkOpen] = useState(false)
   const [nowOpen, setNowOpen] = useState(false)
+  // The "what's loaded into context" panel + its per-layer folds (def, thread
+  // content) — all calm and folded by default.
+  const [ctxOpen, setCtxOpen] = useState(false)
+  const [defOpen, setDefOpen] = useState(false)
+  const [threadCtxOpen, setThreadCtxOpen] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const threadsRef = useRef<Map<string, Note>>(new Map())
 
@@ -103,6 +108,16 @@ export function Uni() {
   // The thread roster for the menu. Failure is fine — choices fall back to the
   // current thread + 'uni' and the free-text "other…" path still works.
   const roster = useAsync(() => fetchAgentRoster().catch(() => [] as Agent[]), [])
+
+  // The active thread note — its body is THIS thread's standing context and its
+  // metadata.loadout the skills composed into the system prompt. Fetched fresh
+  // (the live thread subscription carries metadata, not always content), keyed on
+  // the resolved thread id. Soft-fail: no thread yet → the context panel stays
+  // quiet.
+  const activeThread = useAsync(
+    () => (threadId ? getNote(threadId).catch(() => null) : Promise.resolve(null)),
+    [threadId],
+  )
 
   useEffect(() => {
     const client = getClient()
@@ -223,11 +238,14 @@ export function Uni() {
     if (!thinking) setTurn(emptyTurn())
   }, [thinking])
 
-  // What the threads menu shows: the roster, with 'uni' (and the current thread)
-  // always present even when the query came back empty. Presented as plain
-  // thread names — the agent machinery stays on the Manage page.
+  // What the threads menu shows: only *enabled* agents — retired/disabled
+  // definitions (old sub-agents) drop out of the switcher, since Uni is one
+  // unified agent now. 'uni' and the current thread are always present (even when
+  // disabled or absent from the roster) so you can never get stranded in a thread
+  // you can't see to leave. Presented as plain thread names — the agent machinery
+  // stays on the Manage page (which still lists every definition).
   const threadChoices = useMemo(() => {
-    const agents = [...(roster.data ?? [])]
+    const agents = (roster.data ?? []).filter((a) => a.status === 'enabled')
     for (const c of [channel, 'uni']) {
       if (!agents.some((a) => a.channel === c)) {
         agents.unshift({
@@ -257,6 +275,21 @@ export function Uni() {
   // The thread title: 'uni' reads as the proper name "Uni"; any other thread
   // shows its own name (no "#" prefix — these are threads, not channels).
   const title = channel === 'uni' ? 'Uni' : channel
+
+  // The agent definition behind this thread — its body is the shared identity
+  // layer of the context. Matched from the roster by channel (the routing key).
+  const activeDef = useMemo(
+    () => (roster.data ?? []).find((a) => a.channel === channel) ?? null,
+    [roster.data, channel],
+  )
+
+  // The thread's loadout: an ordered list of skill-note paths whose content is
+  // composed into the prompt. Empty for every thread today (the mechanism is
+  // wired but unused) → the panel reads "no skills loaded".
+  const loadout = useMemo(() => {
+    const l = activeThread.data?.metadata?.loadout
+    return Array.isArray(l) ? l.map(String).filter(Boolean) : []
+  }, [activeThread.data])
 
   // The strip's live-working summary (excludes nothing — it's the system pulse).
   const workingLabel = useMemo(() => {
@@ -330,32 +363,7 @@ export function Uni() {
   return (
     <div className="page" style={{ maxWidth: 740 }}>
       <div className="page-head">
-        <h1>
-          {title}
-          <span className="chan-switch">
-            <button className="rename-trigger" onClick={() => setPicker((v) => !v)}>threads ▾</button>
-            {picker && (
-              <>
-                <div className="overflow-scrim" onClick={() => setPicker(false)} />
-                <div className="chan-pop">
-                  {threadChoices.map((a) => (
-                    <button
-                      key={a.channel}
-                      className={`chan-item${a.channel === channel ? ' on' : ''}`}
-                      title={a.summary || undefined}
-                      onClick={() => pickThread(a.channel)}
-                    >
-                      <span className={`status-dot ${statusDotClass(a.status)}`} />
-                      {a.channel === 'uni' ? 'Uni' : a.channel}
-                      {a.status && <span className="chan-status">{a.status}</span>}
-                    </button>
-                  ))}
-                  <button className="chan-item other" onClick={customThread}>other…</button>
-                </div>
-              </>
-            )}
-          </span>
-        </h1>
+        <h1>{title}</h1>
         <p className="sub">
           <span className={`chat-dot${live ? ' on' : ''}`} />
           {live ? 'Live — talk to Uni; replies arrive in realtime.' : 'Connecting…'}
@@ -373,6 +381,42 @@ export function Uni() {
             </>
           )}
         </p>
+      </div>
+
+      {/* Pinned thread switcher — a slim bar that stays under the global nav as
+          the transcript scrolls, so "which thread am I talking to" (and the
+          switch) is always one glance away, never scrolled off with the head. */}
+      <div className="uni-talkbar">
+        <span className="uni-talkbar-label">talking to</span>
+        <span className="chan-switch">
+          <button className="uni-talkbar-pick" onClick={() => setPicker((v) => !v)}>
+            {title} <span className="uni-talkbar-caret">▾</span>
+          </button>
+          {picker && (
+            <>
+              <div className="overflow-scrim" onClick={() => setPicker(false)} />
+              <div className="chan-pop">
+                {threadChoices.map((a) => (
+                  <button
+                    key={a.channel}
+                    className={`chan-item${a.channel === channel ? ' on' : ''}`}
+                    title={a.summary || undefined}
+                    onClick={() => pickThread(a.channel)}
+                  >
+                    <span className={`status-dot ${statusDotClass(a.status)}`} />
+                    {a.channel === 'uni' ? 'Uni' : a.channel}
+                    {a.status && <span className="chan-status">{a.status}</span>}
+                  </button>
+                ))}
+                <button className="chan-item other" onClick={customThread}>other…</button>
+              </div>
+            </>
+          )}
+        </span>
+        <span
+          className={`uni-talkbar-dot${live ? ' on' : ''}`}
+          title={live ? 'Live' : 'Connecting…'}
+        />
       </div>
 
       <div className="chat">
@@ -432,6 +476,100 @@ export function Uni() {
         <div ref={endRef} />
       </div>
 
+      {/* ── What's loaded into context for THIS thread — the three layers the
+          system prompt is composed from: the def (Uni's shared identity), this
+          thread's standing content, and the loadout (skills pulled up). Calm and
+          collapsible, folded by default. The "see what notes are loaded" view. ── */}
+      <div className="uni-context">
+        <button className="uni-context-head" onClick={() => setCtxOpen((o) => !o)}>
+          <span className="uni-context-title">What's in {title}'s context</span>
+          <span className="uni-context-caret">{ctxOpen ? 'fold' : 'unfold'}</span>
+        </button>
+        {ctxOpen && (
+          <div className="uni-context-body">
+            <p className="uni-context-lede">
+              The layers composed into this thread's prompt — Uni's shared identity,
+              this thread's standing context, and the skills it loads.
+            </p>
+
+            {/* Layer 1 — the def (shared identity, one per agent). */}
+            <div className="uni-layer">
+              <button className="uni-layer-head" onClick={() => setDefOpen((o) => !o)}>
+                <span className="uni-layer-k">def</span>
+                <span className="uni-layer-name">
+                  {activeDef ? `${activeDef.name}'s identity` : 'no definition'}
+                </span>
+                <span className="uni-layer-meta">{defOpen ? 'fold' : 'unfold'}</span>
+              </button>
+              {defOpen && (
+                <div className="uni-layer-body">
+                  {activeDef?.prompt ? (
+                    <>
+                      <Markdown content={activeDef.prompt} />
+                      {activeDef.defId && (
+                        <Link className="uni-layer-open" to={`/note/${encodeURIComponent(activeDef.defId)}`}>
+                          open definition ↗
+                        </Link>
+                      )}
+                    </>
+                  ) : (
+                    <p className="uni-layer-empty">No definition note for this thread yet.</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Layer 2 — this thread's standing content (preserved across turns). */}
+            <div className="uni-layer">
+              <button className="uni-layer-head" onClick={() => setThreadCtxOpen((o) => !o)}>
+                <span className="uni-layer-k">thread</span>
+                <span className="uni-layer-name">this thread's standing context</span>
+                <span className="uni-layer-meta">{threadCtxOpen ? 'fold' : 'unfold'}</span>
+              </button>
+              {threadCtxOpen && (
+                <div className="uni-layer-body">
+                  {activeThread.data?.content?.trim() ? (
+                    <>
+                      <Markdown content={activeThread.data.content} />
+                      {threadId && (
+                        <Link className="uni-layer-open" to={`/note/${encodeURIComponent(threadId)}`}>
+                          open thread note ↗
+                        </Link>
+                      )}
+                    </>
+                  ) : (
+                    <p className="uni-layer-empty">
+                      No standing context — this thread runs on Uni's identity alone.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Layer 3 — the loadout (reusable skills, shared). Empty today. */}
+            <div className="uni-layer">
+              <div className="uni-layer-head static">
+                <span className="uni-layer-k">loadout</span>
+                <span className="uni-layer-name">skills pulled up</span>
+              </div>
+              <div className="uni-layer-body">
+                {loadout.length > 0 ? (
+                  <div className="uni-loadout-list">
+                    {loadout.map((p) => (
+                      <Link key={p} className="uni-loadout-item" to={`/note/${encodeURIComponent(p)}`}>
+                        {p}
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="uni-layer-empty">No skills loaded.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── What Uni's working on — a calm, collapsible glance above the composer.
           Live working pills + recent log + the foldable self-state. Styled like
           Home's "Recent activity", not the old agent config cards. ── */}
@@ -451,6 +589,9 @@ export function Uni() {
         </button>
         {workOpen && (
           <div className="uni-work-body">
+            <p className="uni-work-frame">
+              Across all of Uni's threads — it's one agent, working in many.
+            </p>
             {working.length > 0 && (
               <div className="uni-work-pills">
                 {working.map((w) => (

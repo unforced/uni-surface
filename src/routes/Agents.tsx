@@ -28,11 +28,14 @@ import {
   noteAgentKey,
 } from '../vault/channels'
 
-// The Manage page — the lever, not the window. Every agent/definition with its
-// config, schedules, and prompt; create/edit/pause/resume; enable/disable;
-// Uni/Now and the recent session log. This is the operational control room,
-// reachable only from the ⋯ drawer. To *talk* to Uni, go to /uni — that's the
-// window; this is where you tune the machinery behind it.
+// The Manage page — the lever, not the window. Uni is one unified agent now, so
+// this room is framed around the live model: each agent's identity (its
+// definition/prompt), the JOBS that trigger it (agent/job crons — create / edit /
+// pause / resume), and the skills its threads load (per-thread loadout, shown on
+// the Uni page where there's an active thread). Plus enable/disable, Uni/Now, and
+// the recent session log. No more single-threaded / backend / mode / model
+// framing — that vocabulary is retired. Reachable only from the ⋯ drawer; to
+// *talk* to Uni, go to /uni — that's the window, this is the machinery behind it.
 export function Agents() {
   const roster = useAsync(() => fetchAgentRoster(), [])
   // ONE query for all outbound messages; per-agent stats are grouped client-side.
@@ -210,7 +213,7 @@ export function Agents() {
       <div className="page-head">
         <div className="kicker">manage</div>
         <h1>Agents &amp; schedules</h1>
-        <p className="sub">Every agent definition — its config, schedules, and prompt. The lever, not the window; to talk to Uni, go to <Link to="/uni">Uni</Link>.</p>
+        <p className="sub">Each agent — its identity (the prompt), the jobs that trigger it, and the skills its threads load. The lever, not the window; to talk to Uni, go to <Link to="/uni">Uni</Link>.</p>
       </div>
 
       {now.data && (
@@ -256,9 +259,6 @@ export function Agents() {
                 </div>
                 {a.summary && <div className="arm-summary">{a.summary}</div>}
                 <div className="arm-config">
-                  {a.backend && <span className="arm-tag">{a.backend}</span>}
-                  {a.mode && <span className="arm-tag">{a.mode}</span>}
-                  {a.model && <span className="arm-tag">{a.model}</span>}
                   {a.prompt && (
                     <button className="arm-tag arm-tag-btn" onClick={() => setOpenPrompt(promptOpen ? null : a.defId)}>
                       {promptOpen ? 'hide prompt' : 'prompt'}
@@ -468,7 +468,7 @@ export function Agents() {
               </div>
               <div className="arm-side">
                 <Link className="arm-chan" to={agentHref(a.channel)}>
-                  #{a.channel}
+                  {a.channel === 'uni' ? 'Uni' : a.channel}
                   {unread > 0 && <span className="arm-unread">{unread}</span>}
                 </Link>
                 <span className="arm-last">
