@@ -2286,6 +2286,78 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 12.5px; color: var(--clay); text-decoration: none; font-weight: 500;
 }
 .uni-work-manage:hover { text-decoration: underline; }
+/* The working strip aggregates every thread — frame it as one agent, Uni-wide. */
+.uni-work-frame { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin: 12px 0 6px; }
+
+/* ── Pinned thread switcher — the slim "talking to: <thread> ▾" bar. Sticks
+   under the global nav (top = topbar height) so the switcher never scrolls off
+   with the page-head. Solid bg (no backdrop-filter) so it doesn't trap the
+   picker's fixed scrim in a containing block. ── */
+.uni-talkbar {
+  position: sticky; top: 64px; z-index: 30;
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 16px; padding: 9px 2px;
+  background: var(--bg); border-bottom: 1px solid var(--line-soft);
+}
+.uni-talkbar-label {
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600;
+}
+.uni-talkbar-pick {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  font-family: var(--serif); font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.uni-talkbar-pick:hover { color: var(--clay); }
+.uni-talkbar-caret { font-size: 12px; color: var(--ink-faint); }
+.uni-talkbar-dot {
+  margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint);
+}
+.uni-talkbar-dot.on {
+  background: #4caf7d; box-shadow: 0 0 0 3px color-mix(in srgb, #4caf7d 20%, transparent);
+}
+
+/* ── Context transparency — the three layers composed into this thread's prompt
+   (def · thread content · loadout). Calm, collapsible, folded by default. ── */
+.uni-context {
+  margin: 14px 0 12px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
+}
+.uni-context-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 10px 16px; background: none; border: none; cursor: pointer; text-align: left;
+}
+.uni-context-title { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.uni-context-caret { font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; }
+.uni-context-body { padding: 4px 16px 14px; border-top: 1px solid var(--line-soft); }
+.uni-context-lede { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin: 10px 0 12px; }
+.uni-layer {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface-2); margin-bottom: 8px; overflow: hidden;
+}
+.uni-layer-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; background: none; border: none; cursor: pointer; text-align: left;
+}
+.uni-layer-head.static { cursor: default; }
+.uni-layer-k {
+  flex-shrink: 0; min-width: 56px;
+  font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--clay); font-weight: 700;
+}
+.uni-layer-name { font-size: 13px; color: var(--ink); font-weight: 500; }
+.uni-layer-meta { margin-left: auto; font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; }
+.uni-layer-body { padding: 2px 14px 12px; font-size: 13px; }
+.uni-layer-empty { font-size: 12.5px; color: var(--ink-faint); font-style: italic; margin: 4px 0; }
+.uni-layer-open { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--clay); text-decoration: none; }
+.uni-layer-open:hover { text-decoration: underline; }
+.uni-loadout-list { display: flex; flex-direction: column; gap: 6px; }
+.uni-loadout-item {
+  font-size: 12.5px; color: var(--clay); text-decoration: none;
+  padding: 6px 10px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line);
+}
+.uni-loadout-item:hover { border-color: var(--clay-soft); }
 
 /* ── For You feed ─────────────────────────────────────────────────────────
    The membrane of the proactive system: named cards (surfaces/noticings,
