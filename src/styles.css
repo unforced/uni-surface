@@ -2318,8 +2318,9 @@ button { font-family: inherit; cursor: pointer; }
   background: #4caf7d; box-shadow: 0 0 0 3px color-mix(in srgb, #4caf7d 20%, transparent);
 }
 
-/* ── Context transparency — the three layers composed into this thread's prompt
-   (def · thread content · loadout). Calm, collapsible, folded by default. ── */
+/* ── Context transparency — the three layers composed into this thread's prompt,
+   in order (① roles · ② thread content · ③ extra context) + a rough token
+   readout. Calm, collapsible, folded by default. ── */
 .uni-context {
   margin: 14px 0 12px;
   border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
@@ -2329,7 +2330,14 @@ button { font-family: inherit; cursor: pointer; }
   width: 100%; padding: 10px 16px; background: none; border: none; cursor: pointer; text-align: left;
 }
 .uni-context-title { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
-.uni-context-caret { font-size: 11.5px; color: var(--ink-faint); white-space: nowrap; }
+.uni-context-caret {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 11.5px; color: var(--ink-faint); white-space: nowrap;
+}
+.uni-context-tok {
+  font-size: 11px; color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
 .uni-context-body { padding: 4px 16px 14px; border-top: 1px solid var(--line-soft); }
 .uni-context-lede { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; margin: 10px 0 12px; }
 .uni-layer {
@@ -2352,12 +2360,47 @@ button { font-family: inherit; cursor: pointer; }
 .uni-layer-empty { font-size: 12.5px; color: var(--ink-faint); font-style: italic; margin: 4px 0; }
 .uni-layer-open { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--clay); text-decoration: none; }
 .uni-layer-open:hover { text-decoration: underline; }
-.uni-loadout-list { display: flex; flex-direction: column; gap: 6px; }
-.uni-loadout-item {
-  font-size: 12.5px; color: var(--clay); text-decoration: none;
-  padding: 6px 10px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line);
+
+/* Token readout — composed-prompt estimate, broken down by layer. */
+.uni-tokens {
+  margin: 0 0 14px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2);
 }
-.uni-loadout-item:hover { border-color: var(--clay-soft); }
+.uni-tokens-total { display: flex; align-items: baseline; gap: 7px; }
+.uni-tokens-n {
+  font-size: 17px; font-weight: 700; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.uni-tokens-lbl { font-size: 11.5px; color: var(--ink-soft); }
+.uni-tokens-break {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px;
+  font-size: 11.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums;
+}
+
+/* Loaded context notes (roles / extra context) — path + token, foldable body. */
+.uni-note-list { display: flex; flex-direction: column; gap: 6px; }
+.uni-note {
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); overflow: hidden;
+}
+.uni-note-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 7px 10px; background: none; border: none; cursor: pointer; text-align: left;
+}
+.uni-note-path {
+  font-size: 12.5px; color: var(--clay);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.uni-note-meta {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--ink-faint); white-space: nowrap;
+}
+.uni-tok { font-variant-numeric: tabular-nums; }
+.uni-note-fold { color: var(--ink-faint); }
+.uni-note-body {
+  padding: 2px 12px 10px; font-size: 13px;
+  border-top: 1px solid var(--line-soft);
+}
 
 /* ── For You feed ─────────────────────────────────────────────────────────
    The membrane of the proactive system: named cards (surfaces/noticings,
